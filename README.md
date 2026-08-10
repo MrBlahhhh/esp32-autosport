@@ -433,21 +433,26 @@ Routing order to finish:
 conflict appears. Edit `gen/generate_schematic.py` only; then
 `python gen/generate_schematic.py && python gen/validate.py`.
 
+**Placement is reconciled and DRC-clean (zero violations).**
+`gen/generate_pcb.py` owns ALL placement: the buck islands live in its
+`BUCK_FIXED` table, identified by (sheet, value, net set) so reference
+renumbering cannot scatter them.  `gen/route_bucks.py` is routing-only — it
+finds parts on the saved board by value/net signature and draws the SW loops
+and the +VBAT feed.  The board is 84 x 74 mm.
+
 **Finish the PCB:**
 
-1. Open `esp32s3-can-sd-logger.kicad_pro` in KiCad 9.
-2. Nudge placement where courtyards collide (frontend `U1`/`D1` vs buck input
-   caps; stray auto-pack parts on `L1`/`L2`; `mcu_misc` zone overflow for the
-   AHCT / new headers).
-3. Hand-route remaining nets in the order above; fill zones (`B`); iterate DRC.
-4. Re-run after any schematic change:
+1. Re-run after any schematic change (placement and buck routes regenerate
+   deterministically):
    ```sh
    python gen/generate_schematic.py && python gen/validate.py
    "C:\Program Files\KiCad\9.0\bin\python.exe" gen/generate_pcb.py
    "C:\Program Files\KiCad\9.0\bin\python.exe" gen/route_bucks.py
    ```
-5. Before JLCPCB order: lock LCSC for L1/L2, C2 bulk, 0.1% dividers; clean silk;
-   export Gerbers + BOM.
+2. Hand-route the remaining nets in the order in §9 (SDMMC, USB pair, CAN
+   pair, analog last); fill zones (`B`); iterate DRC.
+3. Before JLCPCB order: lock LCSC for the ASWPA8050S220MT and C2 bulk; clean
+   silk; export Gerbers + JLC BOM/CPL.
 
 **Out of scope for layout:** firmware (TWAI, SDMMC, ADS1115, WS2812 on GPIO48,
 SPI client). GPIO map in §6 is the firmware contract.
