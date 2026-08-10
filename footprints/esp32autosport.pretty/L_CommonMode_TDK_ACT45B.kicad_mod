@@ -1,0 +1,97 @@
+(footprint "L_CommonMode_TDK_ACT45B"
+	(version 20241229)
+	(generator "generate_schematic")
+	(generator_version "1.0")
+	(layer "F.Cu")
+	(descr "TDK ACT45B common-mode choke, EIA 1812, 4.5x3.2x2.8mm. Land per TDK layout recommendation (pads 1.35x0.9mm, X pitch 4.55mm, Y pitch 2.5mm). Pads renumbered so a KiCad L_Coupled symbol's 1-2 winding is the package's top (TDK 1-4) winding and 3-4 is the bottom (TDK 2-3) winding; both pass left to right. https://www.tdk-electronics.tdk.com/inf/30/ds/act45b.pdf")
+	(tags "common mode choke ACT45B CAN")
+	(attr smd)
+	(fp_text reference "REF**"
+		(at 0 -2.7 0)
+		(layer "F.SilkS")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_text value "L_CommonMode_TDK_ACT45B"
+		(at 0 2.7 0)
+		(layer "F.Fab")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(fp_line
+		(start -2.25 -1.6)
+		(end 2.25 -1.6)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+	)
+	(fp_line
+		(start -2.25 1.6)
+		(end 2.25 1.6)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+	)
+	(fp_circle
+		(center -3.6 -1.25)
+		(end -3.45 -1.25)
+		(stroke
+			(width 0.3)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.SilkS")
+	)
+	(fp_rect
+		(start -2.25 -1.6)
+		(end 2.25 1.6)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+	)
+	(fp_rect
+		(start -3.2 -1.95)
+		(end 3.2 1.95)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+	)
+	(pad "1" smd rect
+		(at -2.275 -1.25)
+		(size 1.35 0.9)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "2" smd rect
+		(at 2.275 -1.25)
+		(size 1.35 0.9)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "3" smd rect
+		(at -2.275 1.25)
+		(size 1.35 0.9)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "4" smd rect
+		(at 2.275 1.25)
+		(size 1.35 0.9)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+)

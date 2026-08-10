@@ -338,7 +338,8 @@ def sheet(name, filename, description):
     return s
 
 
-def part(sh, prefix, lib_id, value, footprint, pins, mpn="", note="", nc=()):
+def part(sh, prefix, lib_id, value, footprint, pins, mpn="", note="", nc=(),
+         lcsc=""):
     sh["parts"].append(
         {
             "prefix": prefix,
@@ -349,6 +350,7 @@ def part(sh, prefix, lib_id, value, footprint, pins, mpn="", note="", nc=()):
             "mpn": mpn,
             "note": note,
             "nc": set(nc),
+            "lcsc": lcsc,
         }
     )
 
@@ -374,7 +376,8 @@ pw = sheet(
 
 part(pw, "J", "Connector_Generic:Conn_01x04", "PWR + CAN harness", JST4,
      {"1": "VBAT_IN", "2": "GND", "3": "CAN_H", "4": "CAN_L"},
-     "JST B4B-PH-K", "Pin 1 +12V, 2 GND, 3 CAN_H, 4 CAN_L (Autosport Labs harness order)")
+     "JST B4B-PH-K-S(LF)(SN)", "Pin 1 +12V, 2 GND, 3 CAN_H, 4 CAN_L "
+     "(Autosport Labs harness order)", lcsc="C131334")
 part(pw, "F", "Device:Fuse", "2A slow", "Fuse:Fuse_1206_3216Metric",
      {"1": "VBAT_IN", "2": "VBAT_F"}, "Littelfuse 0466002.NR",
      "Sacrificial: only opens on a hard fault, not on reverse polarity")
@@ -384,11 +387,12 @@ part(pw, "FB", "Device:L", "600R @ 100MHz 3A", "Inductor_SMD:L_1206_3216Metric",
 # Ideal-diode reverse-battery block
 part(pw, "U", "Power_Management:LM74700", "LM74700-Q1", SOT236,
      {"1": "VCAP", "2": "GND", "3": "VBAT_UVLO", "4": "+VBAT", "5": "GATE_RB", "6": "VBAT_FB"},
-     "LM74700QDBVRQ1", "Ideal-diode controller; blocks reverse battery via Q1")
+     "LM74700QDBVRQ1", "Ideal-diode controller; blocks reverse battery via Q1",
+     lcsc="C2941042")
 part(pw, "Q", "Device:Q_NMOS_GSD", "100V 6.8mOhm N-ch", "Package_TO_SOT_SMD:TO-252-3_TabPin2",
      {"1": "GATE_RB", "2": "VBAT_FB", "3": "+VBAT"}, "Infineon IPD068N10N3G",
      "Source to battery, drain to load: body diode blocks reverse polarity. "
-     "LCSC C88066; the previously specified PSMN4R3-100BSE does not exist")
+     "The previously specified PSMN4R3-100BSE does not exist", lcsc="C88066")
 C(pw, "1uF 50V", "VCAP", "VBAT_FB", mpn="", note="LM74700 charge-pump reservoir")
 R(pw, "100k", "VBAT_FB", "VBAT_UVLO", note="UVLO upper leg")
 R(pw, "25.5k", "VBAT_UVLO", "GND", note="UVLO lower leg -> board enables at ~5.9V")
@@ -397,7 +401,8 @@ part(pw, "D", "Device:D_TVS", "SMCJ33A", SMC, {"1": "+VBAT", "2": "GND"},
      "Littelfuse SMCJ33A",
      "33V standoff / 53.3V clamp @ 1500W: absorbs ISO 7637-2 pulse 5b load dump")
 C(pw, "100uF 100V", "+VBAT", "GND", fp="Capacitor_SMD:CP_Elec_10x10.5",
-  mpn="Nichicon UCD2A101MNL1GS", note="Bulk hold-up")
+  mpn="Nichicon UCD2A101MNL1GS", note="Bulk hold-up; any 100uF >=80V SMD "
+  "electrolytic on a 10x10.5 land works -- match in the JLC catalog at order")
 C(pw, "10uF 100V", "+VBAT", "GND", fp=C1206, note="Switcher input bypass")
 C(pw, "100nF 100V", "+VBAT", "GND", note="HF bypass")
 
@@ -406,7 +411,7 @@ part(pw, "U", "Regulator_Switching:LM5164DDA", "LM5164 (5V)", SO8EP,
      {"1": "GND", "2": "+VBAT", "3": "EN_5V", "4": "RON_5V", "5": "FB_5V",
       "6": "PG_5V", "7": "BST_5V", "8": "SW_5V", "9": "GND"},
      "LM5164DDAR", "100V synchronous buck, ultra-low Iq. Non-automotive "
-     "variant: LCSC C477928 and DigiKey stock it; the Q1 is scarce")
+     "variant; the Q1 is scarce", lcsc="C477928")
 R(pw, "100k", "+VBAT", "EN_5V", note="Enable tied to VIN (LM74700 already gates on UVLO)")
 R(pw, "31.6k", "RON_5V", "GND",
   note="RON = 5.0V x 2500 / 400kHz (Eq 12) -> 396kHz; tON = 237ns at the "
@@ -414,8 +419,9 @@ R(pw, "31.6k", "RON_5V", "GND",
 C(pw, "2.2nF 50V", "BST_5V", "SW_5V",
   note="Bootstrap: datasheet mandates exactly 2.2nF X7R -- a larger value "
        "overstresses the internal VCC regulator and damages the device")
-part(pw, "L", "Device:L", "33uH 1.5A", "Inductor_SMD:L_7.3x7.3_H4.5",
-     {"1": "SW_5V", "2": "+5V"}, "Coilcraft XAL7030-333", "Shielded, Isat > 2A")
+part(pw, "L", "Device:L", "33uH 3A", "Inductor_SMD:L_Sunlord_SWPA8040S",
+     {"1": "SW_5V", "2": "+5V"}, "Sunlord ASWPA8050S330MT",
+     "Shielded molded, Isat 3A vs the 1.75A max peak limit", lcsc="C340244")
 R(pw, "100k", "+5V", "FB_5V", note="FB upper: 1.2V ref -> 5.00V")
 R(pw, "31.6k", "FB_5V", "GND", note="FB lower")
 # Type-3 ripple injection (datasheet Table 6-1): the all-ceramic output has no
@@ -434,15 +440,16 @@ part(pw, "U", "Regulator_Switching:LM5164DDA", "LM5164 (3V3)", SO8EP,
      {"1": "GND", "2": "+VBAT", "3": "EN_3V3", "4": "RON_3V3", "5": "FB_3V3",
       "6": "PG_3V3", "7": "BST_3V3", "8": "SW_3V3", "9": "GND"},
      "LM5164DDAR", "Second buck straight off the battery: a shorted 5V "
-     "sensor harness cannot brown out the MCU")
+     "sensor harness cannot brown out the MCU", lcsc="C477928")
 R(pw, "100k", "+VBAT", "EN_3V3")
 R(pw, "20.5k", "RON_3V3", "GND",
   note="RON = 3.3V x 2500 / 400kHz (Eq 12) -> 402kHz; tON = 154ns at the "
        "53.3V clamp, above the 50ns minimum")
 C(pw, "2.2nF 50V", "BST_3V3", "SW_3V3",
   note="Bootstrap: datasheet-mandated 2.2nF X7R, do not increase")
-part(pw, "L", "Device:L", "22uH 1.5A", "Inductor_SMD:L_7.3x7.3_H4.5",
-     {"1": "SW_3V3", "2": "+3V3"}, "Coilcraft XAL7030-223")
+part(pw, "L", "Device:L", "22uH 3A", "Inductor_SMD:L_Sunlord_SWPA8040S",
+     {"1": "SW_3V3", "2": "+3V3"}, "Sunlord ASWPA8050S220MT",
+     "Same automotive series as L1")
 R(pw, "100k", "+3V3", "FB_3V3", note="FB upper: 1.2V ref -> 3.28V")
 R(pw, "57.6k", "FB_3V3", "GND", note="FB lower")
 R(pw, "95.3k", "SW_3V3", "RAMP_3V3", note="Ripple-injection ramp resistor RA")
@@ -498,18 +505,19 @@ part(mc, "U", "RF_Module:ESP32-S3-WROOM-1", "ESP32-S3-WROOM-1-N16R8",
          # Hidden in the symbol; KiCad bonds them to GND by name.
          "40": "GND", "41": "GND",
      },
-     "ESP32-S3-WROOM-1-N16R8",
-     "16MB flash / 8MB octal PSRAM. Pins 28-30 (IO35/36/37) are consumed by "
+     "ESP32-S3-WROOM-1-N16R8", lcsc="C2913202",
+     note="16MB flash / 8MB octal PSRAM. Pins 28-30 (IO35/36/37) are consumed by "
      "the octal PSRAM and must stay unconnected.",
      nc=("28", "29", "30"))
 
 R(mc, "10k", "+3V3", "MCU_EN")
 C(mc, "1uF 16V", "MCU_EN", "GND", note="EN reset delay")
 part(mc, "SW", "Switch:SW_Push", "RESET", "Button_Switch_SMD:SW_SPST_TL3342",
-     {"1": "MCU_EN", "2": "GND"})
+     {"1": "MCU_EN", "2": "GND"}, "TL3342F160QG",
+     "Genuine E-Switch is scarce at LCSC; any 5.2mm gull-wing tact fits")
 R(mc, "10k", "+3V3", "MCU_BOOT")
 part(mc, "SW", "Switch:SW_Push", "BOOT", "Button_Switch_SMD:SW_SPST_TL3342",
-     {"1": "MCU_BOOT", "2": "GND"})
+     {"1": "MCU_BOOT", "2": "GND"}, "TL3342F160QG")
 C(mc, "10uF 16V", "+3V3", "GND", fp=C1206)
 C(mc, "100nF 16V", "+3V3", "GND")
 C(mc, "100nF 16V", "+3V3", "GND")
@@ -521,6 +529,7 @@ part(mc, "J", "Connector:USB_C_Receptacle_USB2.0_16P", "USB-C",
       "A5": "USB_CC1", "B5": "USB_CC2",
       "A6": "USB_DP_CON", "B6": "USB_DP_CON",
       "A7": "USB_DM_CON", "B7": "USB_DM_CON"},
+     mpn="HRO TYPE-C-31-M-12", lcsc="C165948",
      note="Programming / CDC console only -- not a power path in the car",
      nc=("A8", "B8"))
 R(mc, "5.1k", "USB_CC1", "GND")
@@ -534,7 +543,7 @@ C(mc, "10uF 16V", "VBUS", "GND", fp=C1206)
 part(mc, "U", "Power_Protection:USBLC6-2SC6", "USBLC6-2SC6", SOT236,
      {"1": "USB_DP_CON", "2": "GND", "3": "USB_DM_CON",
       "4": "USB_DM", "5": "VBUS", "6": "USB_DP"},
-     "USBLC6-2SC6", "USB ESD clamp")
+     "USBLC6-2SC6", "USB ESD clamp", lcsc="C7519")
 
 part(mc, "J", "Connector_Generic:Conn_01x04", "UART0", HDR4,
      {"1": "+3V3", "2": "UART_TX", "3": "UART_RX", "4": "GND"})
@@ -564,7 +573,8 @@ part(sd, "J", "Connector:Micro_SD_Card_Det1", "microSD push-pull",
      {"1": "SD_D2_C", "2": "SD_D3_C", "3": "SD_CMD_C", "4": "SD_VDD",
       "5": "SD_CLK_C", "6": "GND", "7": "SD_D0_C", "8": "SD_D1_C",
       "9": "SD_CD", "10": "GND"},
-     "Hirose DM3D-SF", "Push-pull socket; DET is the card-present switch")
+     "Hirose DM3D-SF", "Push-pull socket; DET is the card-present switch",
+     lcsc="C719027")
 
 part(sd, "Q", "Device:Q_PMOS_GSD", "-20V 2.3A P-ch", SOT23,
      {"1": "SD_PG", "2": "+3V3", "3": "SD_VDD"}, "DMG2301L",
@@ -590,15 +600,17 @@ cn = sheet("CAN", "can.kicad_sch", "Isolated-ground CAN 2.0B node with selectabl
 part(cn, "U", "Interface_CAN_LIN:TJA1051T-3", "TJA1051T/3", SOIC8,
      {"1": "CAN_TX", "2": "GND", "3": "+5V", "4": "CAN_RX", "5": "+3V3",
       "6": "CANL_T", "7": "CANH_T", "8": "CAN_S"},
-     "TJA1051T/3,118",
-     "5V bus drive with a 3.3V VIO pin, so no level shifting to the ESP32")
+     "TJA1051T/3,118", lcsc="C58988",
+     note="5V bus drive with a 3.3V VIO pin, so no level shifting to the ESP32")
 C(cn, "100nF 16V", "+5V", "GND")
 C(cn, "100nF 16V", "+3V3", "GND")
 R(cn, "10k", "CAN_S", "GND", note="Default to normal (non-silent) mode")
 
-part(cn, "L", "Device:L_Coupled", "51uH CMC", "Inductor_SMD:L_CommonMode_Wuerth_WE-SL2",
+part(cn, "L", "Device:L_Coupled", "51uH CMC", "esp32autosport:L_CommonMode_TDK_ACT45B",
      {"1": "CANH_T", "2": "CAN_H", "3": "CANL_T", "4": "CAN_L"},
-     "Wurth 744232222", "Common-mode choke on the bus side")
+     "TDK ACT45B-510-2P-TL003",
+     "AEC-Q200 CAN choke; footprint pads renumbered so symbol winding 1-2 is "
+     "the package's top (1-4) winding", lcsc="C76584")
 part(cn, "JP", "Jumper:SolderJumper_2_Bridged", "TERM (default ON)", SJ2B,
      {"1": "CAN_H", "2": "TERM_A"},
      note="Cut the trace to remove the 120 ohm termination on a mid-bus node")
@@ -619,7 +631,8 @@ an = sheet("Analog Inputs", "analog.kicad_sch",
 part(an, "J", "Connector_Generic:Conn_01x08", "Sensor harness", JST8,
      {"1": "+5VS", "2": "AIN1_IN", "3": "AIN2_IN", "4": "AIN3_IN",
       "5": "AIN4_IN", "6": "GND", "7": "GND", "8": "+5VS"},
-     "JST B8B-PH-K", "Two 5V and two ground pins so sensors can be paired up")
+     "JST B8B-PH-K-S(LF)(SN)", "Two 5V and two ground pins so sensors can "
+     "be paired up", lcsc="C157974")
 
 for n in range(1, 5):
     inp, node, out = "AIN%d_IN" % n, "AIN%d_A" % n, "AIN%d" % n
@@ -660,8 +673,8 @@ part(an, "U", "Analog_ADC:ADS1115IDGS", "ADS1115",
      "Package_SO:VSSOP-10_3x3mm_P0.5mm",
      {"1": "GND", "3": "GND", "4": "AIN1", "5": "AIN2", "6": "AIN3",
       "7": "AIN4", "8": "+3V3", "9": "I2C_SDA", "10": "I2C_SCL"},
-     "ADS1115IDGSR",
-     "16-bit 4-ch I2C ADC for AFR-grade accuracy; ADDR to GND = 0x48",
+     "ADS1115IDGSR", lcsc="C37593",
+     note="16-bit 4-ch I2C ADC for AFR-grade accuracy; ADDR to GND = 0x48",
      nc=("2",))
 C(an, "100nF 16V", "+3V3", "GND", note="ADS1115 decoupling")
 
@@ -983,13 +996,13 @@ def write_bom(path):
             rows.append(p)
     groups = {}
     for p in rows:
-        key = (p["value"], p["footprint"], p["mpn"])
+        key = (p["value"], p["footprint"], p["mpn"], p["lcsc"])
         groups.setdefault(key, []).append(p["ref"])
     with open(path, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(["Qty (1 board)", "Qty (10 boards)", "References", "Value",
-                    "Footprint", "Manufacturer part number", "Notes"])
-        for (value, fp, mpn), refs in sorted(groups.items(), key=lambda kv: kv[1][0]):
+                    "Footprint", "Manufacturer part number", "LCSC", "Notes"])
+        for (value, fp, mpn, lcsc), refs in sorted(groups.items(), key=lambda kv: kv[1][0]):
             note = next((p["note"] for p in rows if p["ref"] == refs[0] and p["note"]), "")
             w.writerow([len(refs), len(refs) * 10, " ".join(sorted(refs)),
                         value, fp, mpn, note])

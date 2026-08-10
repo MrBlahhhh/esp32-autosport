@@ -1,10 +1,10 @@
-Qty (1 board),Qty (10 boards),References,Value,Footprint,Manufacturer part number,Notes
+Qty (1 board),Qty (10 boards),References,Value,Footprint,Manufacturer part number,LCSC,Notes
 1,10,C1,1uF 50V,Capacitor_SMD:C_0805_2012Metric,,LM74700 charge-pump reservoir
 13,130,C10 C16 C20 C21 C24 C25 C26 C28 C29 C30 C31 C32 C33,100nF 16V,Capacitor_SMD:C_0805_2012Metric,,
 2,20,C14 C15,22uF 6.3V,Capacitor_SMD:C_1206_3216Metric,,
 3,30,C17 C19 C22,10uF 16V,Capacitor_SMD:C_1206_3216Metric,,
 1,10,C18,1uF 16V,Capacitor_SMD:C_0805_2012Metric,,EN reset delay
-1,10,C2,100uF 100V,Capacitor_SMD:CP_Elec_10x10.5,Nichicon UCD2A101MNL1GS,Bulk hold-up
+1,10,C2,100uF 100V,Capacitor_SMD:CP_Elec_10x10.5,Nichicon UCD2A101MNL1GS,Bulk hold-up; any 100uF >=80V SMD electrolytic on a 10x10.5 land works -- match in the JLC catalog at order
 1,10,C23,10uF 6.3V,Capacitor_SMD:C_1206_3216Metric,,
 1,10,C27,4.7nF 50V,Capacitor_SMD:C_0805_2012Metric,,Split-termination common-mode stabiliser
 1,10,C3,10uF 100V,Capacitor_SMD:C_1206_3216Metric,,Switcher input bypass
@@ -26,14 +26,14 @@ Qty (1 board),Qty (10 boards),References,Value,Footprint,Manufacturer part numbe
 1,10,FB1,600R @ 100MHz 3A,Inductor_SMD:L_1206_3216Metric,Wurth 742792625,Conducted-emissions bead
 1,10,FB2,600R @ 100MHz 2A,Inductor_SMD:L_0805_2012Metric,Wurth 742792022,
 4,40,H1 H2 H3 H4,M3,MountingHole:MountingHole_3.2mm_M3,,
-1,10,J1,PWR + CAN harness,Connector_JST:JST_PH_B4B-PH-K_1x04_P2.00mm_Vertical,JST B4B-PH-K,"Pin 1 +12V, 2 GND, 3 CAN_H, 4 CAN_L (Autosport Labs harness order)"
-1,10,J2,USB-C,Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12,,Programming / CDC console only -- not a power path in the car
+1,10,J1,PWR + CAN harness,Connector_JST:JST_PH_B4B-PH-K_1x04_P2.00mm_Vertical,JST B4B-PH-K-S(LF)(SN),"Pin 1 +12V, 2 GND, 3 CAN_H, 4 CAN_L (Autosport Labs harness order)"
+1,10,J2,USB-C,Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12,HRO TYPE-C-31-M-12,Programming / CDC console only -- not a power path in the car
 1,10,J3,UART0,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,,
 1,10,J4,I2C / Qwiic,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,,
 1,10,J5,Spare IO,Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical,,IO3/IO45/IO46 are strapping pins -- leave floating at boot
 1,10,J6,Rail break-out,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,,
 1,10,J7,microSD push-pull,Connector_Card:microSD_HC_Hirose_DM3D-SF,Hirose DM3D-SF,Push-pull socket; DET is the card-present switch
-1,10,J8,Sensor harness,Connector_JST:JST_PH_B8B-PH-K_1x08_P2.00mm_Vertical,JST B8B-PH-K,Two 5V and two ground pins so sensors can be paired up
+1,10,J8,Sensor harness,Connector_JST:JST_PH_B8B-PH-K_1x08_P2.00mm_Vertical,JST B8B-PH-K-S(LF)(SN),Two 5V and two ground pins so sensors can be paired up
 1,10,JP1,TERM (default ON),Jumper:SolderJumper-2_P1.3mm_Bridged_Pad1.0x1.5mm,,Cut the trace to remove the 120 ohm termination on a mid-bus node
 1,10,JP10,RANGE3,Jumper:SolderJumper-3_P1.3mm_Open_Pad1.0x1.5mm,,"C-A = 0-5V range, C-B = 0-16V range, both open = no divider"
 1,10,JP11,PULLUP4,Jumper:SolderJumper-2_P1.3mm_Open_Pad1.0x1.5mm,,Close for 2-wire NTC / open-collector sensors
@@ -47,12 +47,12 @@ Qty (1 board),Qty (10 boards),References,Value,Footprint,Manufacturer part numbe
 1,10,JP7,RANGE2,Jumper:SolderJumper-3_P1.3mm_Open_Pad1.0x1.5mm,,"C-A = 0-5V range, C-B = 0-16V range, both open = no divider"
 1,10,JP8,PULLUP3,Jumper:SolderJumper-2_P1.3mm_Open_Pad1.0x1.5mm,,Close for 2-wire NTC / open-collector sensors
 1,10,JP9,BYPASS3,Jumper:SolderJumper-2_P1.3mm_Open_Pad1.0x1.5mm,,Close for a raw 0-3.3V sensor (shorts the upper leg)
-1,10,L1,33uH 1.5A,Inductor_SMD:L_7.3x7.3_H4.5,Coilcraft XAL7030-333,"Shielded, Isat > 2A"
-1,10,L2,22uH 1.5A,Inductor_SMD:L_7.3x7.3_H4.5,Coilcraft XAL7030-223,
-1,10,L3,51uH CMC,Inductor_SMD:L_CommonMode_Wuerth_WE-SL2,Wurth 744232222,Common-mode choke on the bus side
+1,10,L1,33uH 3A,Inductor_SMD:L_Sunlord_SWPA8040S,Sunlord ASWPA8050S330MT,"Shielded molded, Isat 3A vs the 1.75A max peak limit"
+1,10,L2,22uH 3A,Inductor_SMD:L_Sunlord_SWPA8040S,Sunlord ASWPA8050S220MT,Same automotive series as L1
+1,10,L3,51uH CMC,esp32autosport:L_CommonMode_TDK_ACT45B,TDK ACT45B-510-2P-TL003,AEC-Q200 CAN choke; footprint pads renumbered so symbol winding 1-2 is the package's top (1-4) winding
 1,10,PF1,0.2A hold / 0.4A trip,Resistor_SMD:R_1206_3216Metric,Bourns MF-MSMF020,"Resettable: a shorted sensor wire trips this, not the board"
 1,10,PF2,0.5A hold,Resistor_SMD:R_1206_3216Metric,Bourns MF-MSMF050,
-1,10,Q1,100V 6.8mOhm N-ch,Package_TO_SOT_SMD:TO-252-3_TabPin2,Infineon IPD068N10N3G,"Source to battery, drain to load: body diode blocks reverse polarity. LCSC C88066; the previously specified PSMN4R3-100BSE does not exist"
+1,10,Q1,100V 6.8mOhm N-ch,Package_TO_SOT_SMD:TO-252-3_TabPin2,Infineon IPD068N10N3G,"Source to battery, drain to load: body diode blocks reverse polarity. The previously specified PSMN4R3-100BSE does not exist"
 1,10,Q2,-20V 2.3A P-ch,Package_TO_SOT_SMD:SOT-23,DMG2301L,High-side switch so firmware can power-cycle a wedged card
 1,10,Q3,60V 300mA N-ch,Package_TO_SOT_SMD:SOT-23,2N7002,Level shift for the P-ch gate
 10,100,R1 R11 R14 R24 R26 R3 R5 R62 R8 R9,100k,Resistor_SMD:R_0805_2012Metric,,UVLO upper leg
@@ -74,10 +74,10 @@ Qty (1 board),Qty (10 boards),References,Value,Footprint,Manufacturer part numbe
 4,40,R45 R50 R55 R60,15k 0.1%,Resistor_SMD:R_0805_2012Metric,,0-5V range: 5.0V in -> ~2.88V at the ADC (1k series included); exact scale is a firmware calibration constant
 4,40,R46 R51 R56 R61,2.21k 0.1%,Resistor_SMD:R_0805_2012Metric,,0-16V range: 16.0V in -> ~2.67V at the ADC (1k series included)
 1,10,R7,121k,Resistor_SMD:R_0805_2012Metric,,Ripple-injection ramp resistor RA
-1,10,SW1,RESET,Button_Switch_SMD:SW_SPST_TL3342,,
-1,10,SW2,BOOT,Button_Switch_SMD:SW_SPST_TL3342,,
+1,10,SW1,RESET,Button_Switch_SMD:SW_SPST_TL3342,TL3342F160QG,Genuine E-Switch is scarce at LCSC; any 5.2mm gull-wing tact fits
+1,10,SW2,BOOT,Button_Switch_SMD:SW_SPST_TL3342,TL3342F160QG,
 1,10,U1,LM74700-Q1,Package_TO_SOT_SMD:SOT-23-6,LM74700QDBVRQ1,Ideal-diode controller; blocks reverse battery via Q1
-1,10,U2,LM5164 (5V),Package_SO:SOIC-8-1EP_3.9x4.9mm_P1.27mm_EP2.95x4.9mm_Mask2.71x3.4mm_ThermalVias,LM5164DDAR,"100V synchronous buck, ultra-low Iq. Non-automotive variant: LCSC C477928 and DigiKey stock it; the Q1 is scarce"
+1,10,U2,LM5164 (5V),Package_SO:SOIC-8-1EP_3.9x4.9mm_P1.27mm_EP2.95x4.9mm_Mask2.71x3.4mm_ThermalVias,LM5164DDAR,"100V synchronous buck, ultra-low Iq. Non-automotive variant; the Q1 is scarce"
 1,10,U3,LM5164 (3V3),Package_SO:SOIC-8-1EP_3.9x4.9mm_P1.27mm_EP2.95x4.9mm_Mask2.71x3.4mm_ThermalVias,LM5164DDAR,Second buck straight off the battery: a shorted 5V sensor harness cannot brown out the MCU
 1,10,U4,ESP32-S3-WROOM-1-N16R8,RF_Module:ESP32-S3-WROOM-1,ESP32-S3-WROOM-1-N16R8,16MB flash / 8MB octal PSRAM. Pins 28-30 (IO35/36/37) are consumed by the octal PSRAM and must stay unconnected.
 1,10,U5,USBLC6-2SC6,Package_TO_SOT_SMD:SOT-23-6,USBLC6-2SC6,USB ESD clamp

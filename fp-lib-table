@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "esp32autosport")(type "KiCad")(uri "${KIPRJMOD}/footprints/esp32autosport.pretty")(options "")(descr "Project-local footprints"))
+)

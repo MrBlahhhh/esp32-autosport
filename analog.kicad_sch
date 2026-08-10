@@ -2843,7 +2843,7 @@
     (property "Datasheet" "~" (at 54.61 37.56 0)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "MPN" "JST B8B-PH-K" (at 54.61 37.56 0)
+    (property "MPN" "JST B8B-PH-K-S(LF)(SN)" (at 54.61 37.56 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Note" "Two 5V and two ground pins so sensors can be paired up" (at 54.61 37.56 0)
