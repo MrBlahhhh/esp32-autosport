@@ -36,7 +36,7 @@ import generate_schematic as sch  # noqa: E402
 # ------------------------------------------------------------------ setup ----
 
 BOARD_W = 84.0
-BOARD_H = 72.0
+BOARD_H = 74.0
 FILLET = 3.0
 OUT = os.path.join(PROJ, "esp32s3-can-sd-logger.kicad_pcb")
 
@@ -71,92 +71,90 @@ def lib_path(lib):
 # mapping survives reference renumbering.  (x, y, rotation_degrees)
 FIXED = {
     "JST B8B-PH-K-S(LF)(SN)":   (5.0, 18.0, 270),   # sensor harness, left edge
-    "JST B4B-PH-K-S(LF)(SN)":   (5.0, 50.0, 270),   # power/CAN, left edge
+    "JST B4B-PH-K-S(LF)(SN)":   (5.0, 50.0, 270),   # power/CAN harness
     "ESP32-S3-WROOM-1-N16R8":   (52.0, 6.8, 0),     # antenna overhangs top edge
-    "HRO TYPE-C-31-M-12":       (78.5, 8.0, 90),    # right edge, opening out
+    "HRO TYPE-C-31-M-12":       (78.5, 8.0, 270),   # right edge, opening out
     "Hirose DM3D-SF":           (75.0, 41.0, 270),  # right edge, card out
-    "value:Spare IO":           (11.5, 3.0, 90),    # top edge, row along X
-    "value:UART0":              (12.0, 69.5, 90),
-    "value:I2C / Qwiic":        (22.0, 69.5, 90),   # bottom edge, left
-    "value:Rail break-out":     (32.0, 69.5, 90),
-    "value:SPI":                (42.0, 69.5, 90),
-    "value:WS2812":             (78.0, 40.0, 0),    # right edge near LEDs
+    "value:Spare IO":           (10.0, 3.0, 90),    # top edge
+    "value:SPI":                (21.7, 3.0, 90),    # top edge
+    "value:UART0":              (26.0, 71.5, 90),   # bottom edge
+    "value:I2C / Qwiic":        (41.0, 71.5, 90),
+    "value:Rail break-out":     (56.0, 71.5, 90),
+    "value:WS2812":             (70.5, 71.5, 90),   # shift-light strip
+    "value:RESET":              (78.0, 56.5, 0),    # right edge, case access
+    "value:BOOT":               (78.0, 63.5, 0),
+    "value:amber":              (75.5, 50.8, 0),    # status LEDs by the edge
+    "value:blue":               (72.0, 50.8, 0),
 }
 
-# Buck islands — kept in sync with gen/route_bucks.py PLACE. Keyed by ref
-# after assign_refs() so regenerating the board does not scatter the loops.
-REF_FIXED = {
-    "C4":  (34.5, 44.0, 0),
-    "C3":  (34.5, 47.8, 0),
-    "U2":  (41.0, 45.0, 0),
-    "C5":  (41.0, 39.5, 0),
-    "L1":  (50.0, 43.0, 0),
-    "C8":  (55.0, 48.5, 0),
-    "C10": (45.5, 48.5, 0),
-    "C9":  (55.0, 51.8, 0),
-    "TP2": (45.5, 51.8, 0),
-    "R3":  (34.5, 40.5, 0),
-    "R7":  (45.5, 39.5, 0),
-    "R4":  (38.5, 51.0, 0),
-    "R6":  (42.5, 51.0, 0),
-    "R5":  (46.5, 51.0, 0),
-    "C6":  (50.5, 51.0, 0),
-    "C7":  (46.5, 54.0, 0),
-    "R8":  (42.5, 54.0, 0),
-    "U3":  (41.0, 59.0, 0),
-    "C11": (41.0, 53.5, 0),
-    "L2":  (50.0, 57.0, 0),
-    "C14": (55.0, 62.5, 0),
-    "C16": (45.5, 62.5, 0),
-    "C15": (55.0, 65.8, 0),
-    "TP3": (45.5, 65.8, 0),
-    "R9":  (34.5, 55.5, 0),
-    "R13": (45.5, 53.5, 0),
-    "R10": (34.5, 65.5, 0),
-    "R12": (38.5, 65.5, 0),
-    "R11": (42.5, 65.5, 0),
-    "C12": (46.5, 65.5, 0),
-    "C13": (42.5, 68.5, 0),
-    "R14": (38.5, 68.5, 0),
-    "SW1": (78.0, 55.0, 0),
-    "SW2": (78.0, 61.0, 0),
-    "D6":  (78.0, 49.0, 0),
-    "D7":  (78.0, 46.0, 0),
-    "Q2":  (60.0, 28.0, 0),
-    "Q3":  (64.0, 28.0, 0),
-    "R25": (60.0, 24.5, 0),
-    "R26": (64.0, 24.5, 0),
-    "R24": (68.0, 24.5, 0),
-    "F1":  (29.0, 51.0, 0),
-    "FB1": (24.0, 51.0, 0),
-    "Q1":  (26.0, 43.0, 0),
-}
+# The two LM5164 buck islands, stacked mid-board left of the SD socket, with
+# tight SW loops and input caps at the VIN pins (geometry from
+# gen/route_bucks.py's original layout).  Parts here are generic values, so
+# they are identified by (sheet, value, exact net set) -- stable no matter how
+# references renumber.  Entries are consumed in schematic order for twins.
+BUCK_FIXED = [
+    # sheet,   value,        nets,                          x,    y,   rot
+    # ---- 5V island: EN/BST/RA row, IC + inductor, input caps at VIN,
+    # ---- RON/FB row, ripple/PG row, output caps at the inductor
+    ("Power", "100k",       {"+VBAT", "EN_5V"},          (38.3, 37.6, 0)),
+    ("Power", "2.2nF 50V",  {"BST_5V", "SW_5V"},         (42.0, 37.6, 0)),
+    ("Power", "121k",       {"SW_5V", "RAMP_5V"},        (45.7, 37.6, 0)),
+    ("Power", "LM5164 (5V)", None,                       (42.5, 42.0, 0)),
+    ("Power", "33uH 3A",    {"SW_5V", "+5V"},            (53.0, 42.0, 0)),
+    ("Power", "100nF 100V", {"+VBAT", "GND"},            (36.3, 42.2, 180)),
+    ("Power", "10uF 100V",  {"+VBAT", "GND"},            (36.2, 45.1, 180)),
+    ("Power", "31.6k",      {"RON_5V", "GND"},           (38.5, 48.2, 0)),
+    ("Power", "31.6k",      {"FB_5V", "GND"},            (42.5, 48.2, 0)),
+    ("Power", "100k",       {"+5V", "FB_5V"},            (46.5, 48.2, 0)),
+    ("Power", "22uF 16V",   {"+5V", "GND"},              (51.5, 47.8, 0)),
+    ("Power", "22uF 16V",   {"+5V", "GND"},              (56.5, 47.8, 0)),
+    ("Power", "100nF 16V",  {"+5V", "GND"},              (56.5, 50.4, 0)),
+    ("Power", "3.3nF 50V",  {"RAMP_5V", "+5V"},          (51.0, 50.8, 0)),
+    ("Power", "270pF 50V",  {"RAMP_5V", "FB_5V"},        (40.5, 51.0, 0)),
+    ("Power", "100k",       {"PG_5V", "+3V3"},           (44.5, 51.0, 0)),
+    ("Power", "+5V",        {"+5V"},                     (33.8, 37.4, 0)),
 
-HOLES = [(4.0, 4.0), (4.0, 68.0), (66.0, 4.0), (80.0, 26.0)]
+    # ---- 3V3 island: same pattern, one pitch down
+    ("Power", "100k",       {"+VBAT", "EN_3V3"},         (38.3, 53.4, 0)),
+    ("Power", "2.2nF 50V",  {"BST_3V3", "SW_3V3"},       (42.0, 53.4, 0)),
+    ("Power", "95.3k",      {"SW_3V3", "RAMP_3V3"},      (45.7, 53.4, 0)),
+    ("Power", "LM5164 (3V3)", None,                      (42.5, 57.8, 0)),
+    ("Power", "22uH 3A",    {"SW_3V3", "+3V3"},          (53.0, 57.8, 0)),
+    ("Power", "20.5k",      {"RON_3V3", "GND"},          (38.5, 64.0, 0)),
+    ("Power", "57.6k",      {"FB_3V3", "GND"},           (42.5, 64.0, 0)),
+    ("Power", "100k",       {"+3V3", "FB_3V3"},          (46.5, 64.0, 0)),
+    ("Power", "22uF 6.3V",  {"+3V3", "GND"},             (51.5, 63.6, 0)),
+    ("Power", "22uF 6.3V",  {"+3V3", "GND"},             (56.5, 63.6, 0)),
+    ("Power", "100nF 16V",  {"+3V3", "GND"},             (56.5, 66.2, 0)),
+    ("Power", "3.3nF 50V",  {"RAMP_3V3", "+3V3"},        (51.0, 66.6, 0)),
+    ("Power", "270pF 50V",  {"RAMP_3V3", "FB_3V3"},      (40.5, 66.8, 0)),
+    ("Power", "100k",       {"PG_3V3", "+3V3"},          (44.5, 66.8, 0)),
+    ("Power", "+3V3",       {"+3V3"},                    (33.5, 68.2, 0)),
+]
+
+
+HOLES = [(4.0, 4.0), (4.0, 70.0), (66.0, 4.0), (80.0, 26.0)]
 
 # Auto-packed zones: (x, y, w, h) shelves filled left-to-right, top-to-bottom.
 # Order matters: the first predicate that matches a part claims it.
 ZONES = [
     # (name, rect, predicate)
-    ("adc",       (43.0, 29.0,  8.0, 13.0), lambda p, n, s: p["mpn"] == "ADS1115IDGSR"),
+    ("adc",       (43.0, 29.0,  7.5,  7.0), lambda p, n, s: p["mpn"] == "ADS1115IDGSR" or (s == "Analog Inputs" and n <= {"+3V3", "GND"})),
     ("ch1",       ( 9.5,  7.0,  8.0, 24.0), lambda p, n, s: n & {"AIN1_A", "AIN1_PU", "AIN1_R1", "AIN1_R2", "AIN1_IN", "AIN1"}),
     ("ch2",       (18.0,  7.0,  8.0, 24.0), lambda p, n, s: n & {"AIN2_A", "AIN2_PU", "AIN2_R1", "AIN2_R2", "AIN2_IN", "AIN2"}),
     ("ch3",       (26.5,  7.0,  8.0, 24.0), lambda p, n, s: n & {"AIN3_A", "AIN3_PU", "AIN3_R1", "AIN3_R2", "AIN3_IN", "AIN3"}),
     ("ch4",       (34.6,  7.0,  7.6, 24.0), lambda p, n, s: n & {"AIN4_A", "AIN4_PU", "AIN4_R1", "AIN4_R2", "AIN4_IN", "AIN4"}),
-    ("adc",       (43.0, 29.0,  7.5, 13.0), lambda p, n, s: s == "Analog Inputs"),
+    ("ws2812",    (59.0, 58.3, 14.2,  3.8), lambda p, n, s: n & {"LED_DIN_MCU", "LED_DIN_A", "LED_DIN", "LED_5V"}),
+    ("ledr",      (78.5, 48.7,  5.0,  4.6), lambda p, n, s: n & {"LED1_A", "LED2_A"}),
     ("usb",       (62.0, 13.5, 14.0,  9.5), lambda p, n, s: n & {"USB_DP_CON", "USB_DM_CON", "USB_CC1", "USB_CC2", "VBUS_IN", "VBUS", "USB_DP", "USB_DM"}),
-    ("buttons",   (73.0, 49.0, 10.0, 18.0), lambda p, n, s: p["value"] in ("RESET", "BOOT") or n & {"LED1_A", "LED2_A", "LED1", "LED2"}),
-    ("sdpwr",     (55.5, 44.0, 12.5,  6.2), lambda p, n, s: n & {"SD_PG", "SD_EN_G", "SD_PWR_EN"}),
-    ("sd",        (50.5, 29.0, 12.0, 15.0), lambda p, n, s: s == "SD Card"),
-    ("can",       ( 9.5, 29.0, 21.0, 15.0), lambda p, n, s: s == "CAN"),
-    ("sens5v",    ( 9.5, 66.0, 25.0,  5.5), lambda p, n, s: n & {"VSENS_F", "+5VS"} and s == "Power"),
-    ("rail5",     (38.5, 44.0, 17.0, 20.0), lambda p, n, s: s == "Power" and n & {"SW_5V", "BST_5V", "RON_5V", "FB_5V", "RAMP_5V", "EN_5V", "PG_5V", "+5V"}),
-    ("rail3",     (55.5, 50.4, 17.0, 16.6), lambda p, n, s: s == "Power" and n & {"SW_3V3", "BST_3V3", "RON_3V3", "FB_3V3", "RAMP_3V3", "EN_3V3", "PG_3V3"}),
-    ("frontend",  ( 9.5, 44.0, 29.0, 21.5), lambda p, n, s: s == "Power" and n & {"VBAT_IN", "VBAT_F", "VBAT_FB", "GATE_RB", "VCAP", "VBAT_UVLO", "+VBAT"}),
+    ("sdpwr",     (59.0, 49.3, 11.0,  8.5), lambda p, n, s: n & {"SD_PG", "SD_EN_G", "SD_PWR_EN"}),
+    ("sd",        (51.0, 22.4, 11.5, 12.4), lambda p, n, s: s == "SD Card"),
+    ("can",       ( 9.5, 28.2, 21.0, 15.0), lambda p, n, s: s == "CAN"),
+    ("sens5v",    (59.0, 62.5, 14.5,  6.9), lambda p, n, s: n & {"VSENS_F", "+5VS"} and s == "Power"),
+    ("frontend",  ( 9.2, 43.3, 24.4, 25.0), lambda p, n, s: s == "Power" and n & {"VBAT_IN", "VBAT_F", "VBAT_FB", "GATE_RB", "VCAP", "VBAT_UVLO", "+VBAT"}),
     ("mcu_misc",  (63.0, 23.3, 13.0,  9.7), lambda p, n, s: s == "MCU"),
-    ("pwr_misc",  (31.5, 30.0, 10.5, 13.5), lambda p, n, s: True),
+    ("pwr_misc",  (30.7, 23.9, 10.4, 12.0), lambda p, n, s: True),
 ]
-
 
 
 def zone_for(part, sheet_name):
@@ -240,6 +238,11 @@ def main():
     # --- load, net, and bucket every part ---------------------------------
     buckets = {name: [] for name, _, _ in ZONES}
     fixed_parts, hole_parts = [], []
+    buck_index = {}
+    for sheet_name, value, netset, pos in BUCK_FIXED:
+        key = (sheet_name, value,
+               frozenset(netset) if netset is not None else None)
+        buck_index.setdefault(key, []).append(pos)
 
     for sh in sch.SHEETS:
         for p in sh["parts"]:
@@ -257,8 +260,16 @@ def main():
             if p["footprint"].startswith("MountingHole"):
                 hole_parts.append(fp)
                 continue
-            if p["ref"] in REF_FIXED:
-                x, y, rot = REF_FIXED[p["ref"]]
+            netset = frozenset(p["pins"].values())
+            hit = None
+            for key in ((sh["name"], p["value"], netset),
+                        (sh["name"], p["value"], None)):
+                lst = buck_index.get(key)
+                if lst:
+                    hit = lst.pop(0)
+                    break
+            if hit is not None:
+                x, y, rot = hit
                 fp.SetOrientationDegrees(rot)
                 fp.SetPosition(pt(x, y))
                 fixed_parts.append(fp)
@@ -274,6 +285,32 @@ def main():
 
     for fp, (x, y) in zip(hole_parts, HOLES):
         fp.SetPosition(pt(x, y))
+
+    unused = sum(len(v) for v in buck_index.values())
+    if unused:
+        print("WARNING: %d BUCK_FIXED entries matched no part" % unused)
+
+    # Report courtyard overlaps between fixed parts so BUCK_FIXED can be
+    # tuned against real numbers instead of guesses.
+    boxes = []
+    for fp in fixed_parts:
+        bb = courtyard_box(fp)
+        boxes.append((fp.GetReference(), fp.GetValue()[:14],
+                      pcbnew.ToMM(bb.GetLeft()), pcbnew.ToMM(bb.GetTop()),
+                      pcbnew.ToMM(bb.GetRight()), pcbnew.ToMM(bb.GetBottom())))
+    clashes = 0
+    for i in range(len(boxes)):
+        for j in range(i + 1, len(boxes)):
+            r1, v1, ax1, ay1, ax2, ay2 = boxes[i]
+            r2, v2, bx1, by1, bx2, by2 = boxes[j]
+            ox = min(ax2, bx2) - max(ax1, bx1)
+            oy = min(ay2, by2) - max(ay1, by1)
+            if ox > 0.01 and oy > 0.01:
+                print("  FIXED CLASH %s(%s) x %s(%s): dx=%.2f dy=%.2f" %
+                      (r1, v1, r2, v2, ox, oy))
+                clashes += 1
+    if clashes:
+        print("  %d fixed-part clashes" % clashes)
 
     # --- shelf-pack each zone ---------------------------------------------
     GAP = 0.4
