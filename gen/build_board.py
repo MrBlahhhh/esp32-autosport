@@ -14,8 +14,15 @@ Stages, in order:
   5. freerouting        route the remaining signals on F.Cu / B.Cu
   6. import_ses.py      bring the routes back and refill the pours
   7. finish_routing.py  tie duplicated connector pins, report leftovers
+  8. maze_route.py      rip up and re-route whatever is still open
+  9. tidy_silk.py       shrink and shuffle the reference designators
 
-Stages 1-4 and 6-7 need KiCad's bundled Python for pcbnew, so this driver
+Stage 8 is what finishes the board.  An autorouter routes the easy nets
+first and fences the awkward ones in, and the last few connections are
+not hard because they are long -- they are hard because something is
+parked in the only way out.  Stage 9 touches no copper.
+
+Stages 1-4 and 6-9 need KiCad's bundled Python for pcbnew, so this driver
 re-invokes them with that interpreter; run the driver itself with any
 Python 3.  Freerouting needs Java.  Without --freerouting it looks for
 freerouting.jar next to the project and in the current directory, and
@@ -114,6 +121,9 @@ def main():
 
     run([py, os.path.join(HERE, "import_ses.py"), ses], "import routes")
     run([py, os.path.join(HERE, "finish_routing.py")], "finish + verify")
+    run([py, os.path.join(HERE, "maze_route.py"), "--reset"],
+        "rip-up and re-route the leftovers")
+    run([py, os.path.join(HERE, "tidy_silk.py")], "tidy the silkscreen")
 
 
 if __name__ == "__main__":

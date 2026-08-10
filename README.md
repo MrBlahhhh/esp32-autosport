@@ -11,11 +11,13 @@ harness convention (12 V / GND / CAN_H / CAN_L), same default-on 120 Ω
 termination jumper — but trades the second CAN channel for an onboard microSD
 socket and conditioned analog inputs.
 
-**Status: schematic complete and ERC-clean on KiCad 9.0. PCB is 84 x 74 mm,
-4-layer, placed and routed: ~1500 tracks, ~210 vias, solid GND and +3V3
-planes, **DRC-clean with zero violations**. A handful of short connections in
-the densest blocks are left for the interactive router — `gen/finish_routing.py`
-names them every run. See §9 for the pipeline and §10 for what remains.**
+**Status: complete and ready to order.** Schematic is ERC-clean on KiCad 9.0.
+The PCB is 84 x 74 mm, 4-layer, fully placed and routed — 1340 tracks, 222
+vias, solid GND and +3V3 planes, **all 341 connections routed with zero DRC
+errors and nothing unconnected**. `fab/` holds the Gerbers, drill, BOM and
+pick-and-place files in JLCPCB's format. See §9 for how the board is built
+and §10 for the ordering steps. **Rev A has never been fabricated — the first
+order should be a small prototype run.**
 
 ---
 
@@ -332,11 +334,15 @@ resistors (commodity at LCSC).
 | `gen/export_dsn.py` | Specctra export with the inner layers locked as planes |
 | `gen/import_ses.py` | Imports the router's session and refills the pours |
 | `gen/finish_routing.py` | Ties duplicated connector pins; reports leftovers |
+| `gen/maze_route.py` | Rip-up-and-retry router for what the autorouter fences in |
+| `gen/tidy_silk.py` | Shrinks and re-places reference designators; no copper |
 | `gen/export_fab.py` | Gerbers, drill, JLC assembly BOM and position files |
 | `gen/route_bucks.py` | Places buck islands + routes SW/VIN critical copper |
-| `esp32s3-can-sd-logger.kicad_pcb` | Generated 4-layer board, placed, partially routed |
+| `esp32s3-can-sd-logger.kicad_pcb` | Generated 4-layer board, fully placed and routed |
 | `footprints/esp32autosport.pretty` | Project footprints (TDK ACT45B CAN choke) |
 | `plots/board-placement.png` | Render of the placed board |
+| `plots/board-routed.png` | Render of the finished board |
+| `fab/` | Gerbers, drill, JLC BOM and pick-and-place (generated) |
 
 ### KiCad version
 
@@ -409,13 +415,15 @@ python gen/build_board.py --freerouting freerouting.jar
 | 5 | freerouting | Routes the remaining signals on F.Cu / B.Cu |
 | 6 | `import_ses.py` | Brings the routes back, refills the pours |
 | 7 | `finish_routing.py` | Ties duplicated connector pins, reports leftovers |
+| 8 | `maze_route.py` | Rips up and re-routes whatever is still open |
+| 9 | `tidy_silk.py` | Shrinks and shuffles the reference designators |
 
 84 x 74 mm, 4 layers: **F.Cu / GND / +3V3 / B.Cu**, JLCPCB JLC04161H-7628
 stackup, 0.2 mm minimum drill (the LM5164 thermal vias), 0.5 mm copper-to-edge
 enforced by a rule-area band around the perimeter.
 
-Two things in that pipeline are worth knowing, because both were learned the
-hard way:
+Three things in that pipeline are worth knowing, because all three were
+learned the hard way:
 
 **The inner layers must be declared `power` in the DSN.** KiCad exports every
 copper layer as `signal`, so an autorouter cheerfully runs traces straight
@@ -431,6 +439,31 @@ up front means the router treats them as obstacles and has only signals left to
 solve. `stitch_planes.py` places each via with real point-to-rectangle and
 point-to-segment distance checks -- bounding boxes are far too pessimistic in a
 dense field and refuse room that is really there.
+
+**The last few connections need rip-up, not a better search.** An autorouter
+takes the easy nets first and fences the awkward ones in, so what it leaves
+behind has no path at all -- `SD_CLK` ran straight under the ESP32 module's
+pads 20 and 21 and walled both of them off, and at 1.27 mm pitch nothing slips
+past sideways. `maze_route.py` grids each copper layer at 0.1 mm, searches both
+layers at once with Dijkstra, and when that fails works out which nets are
+pressed against the dead end, tears them out, routes the trapped net through
+the space they leave, and re-routes them afterwards. Three details make it
+work rather than thrash:
+
+- **A rip removes tracks, never pads.** Ignoring a ripped net's pads too lets
+  the router lay copper straight across them.
+- **Blockers are ranked from the tighter pocket.** Flood from both ends and
+  score the smaller one -- an end that can reach half the board has a frontier
+  thousands of cells long, and the innocent nets along it drown out the few
+  actually doing the trapping.
+- **Connections are to a net, not a pad.** USB-C carries D- on both A7 and B7;
+  A7 escapes only down a 16 um corridor, finer than any grid, while B7 opens
+  onto the whole board. Aiming at the net's existing copper turns an
+  impossible route into an easy one.
+
+Nets with more than four pads are never ripped: a two-pad signal comes back as
+one trace, but a rail that daisy-chains six decoupling caps comes back as six
+separate connections, each able to fail on its own.
 
 ### Placement
 
@@ -459,36 +492,93 @@ plug access anyway.
 conflict appears. Edit `gen/generate_schematic.py` only; then
 `python gen/generate_schematic.py && python gen/validate.py`.
 
-**The board is routed and DRC-clean** (zero violations). Rebuild it any time
-with `python gen/build_board.py --freerouting freerouting.jar` — placement,
-plane vias and the buck loops are deterministic, so the only thing that
-varies between runs is the autorouter's solution for the signals.
+**The board is finished.** 341 of 341 connections routed, **zero DRC errors,
+zero unconnected**: 1340 tracks, 222 vias, solid GND and +3V3 pours. Rebuild
+it any time with `python gen/build_board.py --freerouting freerouting.jar` —
+placement, plane vias and the buck loops are deterministic, so the only thing
+that varies between runs is the autorouter's solution for the signals, and
+stage 8 closes out whatever it leaves.
 
-### Three connections are left for the interactive router
+The 100 remaining DRC findings are all `warning`-severity silkscreen overlap
+on a board with 168 parts in 84 x 74 mm. Reference designators are at 0.8 mm,
+the floor for both the board's own text rule and JLC's silkscreen, and values
+are hidden. Nothing here affects fabrication or assembly.
 
-These sit in the two most congested blocks and the autorouter could not
-reach them; `gen/finish_routing.py` prints them by name after every run:
+### Ordering it from JLCPCB, step by step
 
-| Net | From | To |
+Everything you upload is already in `fab/`. Regenerate it any time with
+`python gen/export_fab.py`.
+
+**1 — Upload the board.** At [jlcpcb.com](https://jlcpcb.com), *Order now*,
+then *Add gerber file* and give it `fab/esp32s3-can-sd-logger-gerbers.zip`.
+It will read 84 x 74 mm and 4 layers off the files.
+
+**2 — Board options.** Everything not listed here can stay at its default.
+
+| Option | Set it to | Why |
 |---|---|---|
-| `SD_CMD` | `U4` pin 21 | `R29` pin 1 |
-| `SD_D0` | `U4` pin 20 | `R30` pin 1 |
-| `USB_DM_CON` | `U5` pin 3 | the D- track from `J2` |
+| Layers | 4 | detected automatically |
+| PCB Qty | 5 | the cheapest quantity, and this is a first run |
+| Thickness | 1.6 mm | what the stackup assumes |
+| Impedance control | Yes → **JLC04161H-7628** | the stackup the board is designed to |
+| Surface finish | **ENIG** | worth the few extra dollars — HASL leaves an uneven surface, and the USB-C and the module are 0.5 mm pitch |
+| Outer copper | 1 oz | |
+| Remove order number | "Specify a location" or Yes | otherwise they print their job number wherever they like |
 
-Open `esp32s3-can-sd-logger.kicad_pro`, press `B` to fill the pours if they
-look empty, and route those three with the interactive router — a few minutes
-of work. Re-run DRC afterwards.
+**3 — Turn on assembly.** Switch *PCB Assembly* on. Assembly side **Top**,
+quantity 5, tooling holes *Added by JLCPCB*. Every part is on the top face.
 
-### Before ordering from JLCPCB
+**4 — Upload the parts files.** BOM is `fab/bom.csv`, CPL (they may call it
+"pick and place") is `fab/positions.csv`.
 
-1. `python gen/export_fab.py` writes `fab/`: Gerbers + drill (zipped),
-   `bom.csv` and `positions.csv` in JLC's column layout.
-2. It prints the parts with no LCSC number — pick those in JLC's catalogue
-   at order time (the polyfuses, the P-channel FET, the bulk electrolytic,
-   the 0.1 % divider resistors, LEDs and passives).
-3. Give the silkscreen a once-over in KiCad: auto-placement does not move
-   reference designators, so some overlap parts.
-4. Stackup is JLC04161H-7628, 4 layer, 1.6 mm, 1 oz outer.
+**5 — Match the parts.** Lines with an LCSC number match themselves. The rest
+— polyfuses, the P-channel FET, the bulk electrolytic, the 0.1 % dividers,
+LEDs and generic passives — you pick from their catalogue on this screen.
+Take *Basic* parts over *Extended* where the value and package match; Extended
+parts add a setup fee each. Two things to hold to: the 0.1 % divider resistors
+(`R43`–`R62`) must stay **0.1 %**, that tolerance is the whole point of the
+analog front end, and `C2`/`C3`/`C4` must stay **100 V** rated.
+
+**6 — Check the placement preview, carefully.** This is the step that bites
+people. JLC's library orients some packages differently from KiCad, so
+polarised parts can come back rotated 180°. Look hard at every diode (`D1`–
+`D14`), the electrolytic `C2`, the LEDs, and the ICs, and correct any that
+face the wrong way in their previewer. Everything else is symmetrical and
+cannot go on backwards.
+
+**7 — Order.** Roughly two weeks including assembly.
+
+### The eight parts you solder yourself
+
+JLC places all 136 surface-mount parts. These eight are through-hole, and
+through-hole assembly is a separate, pricier service — it is easier to buy
+them and solder them yourself. They are large, widely spaced, and a good
+first soldering job.
+
+| Ref | Part |
+|---|---|
+| `J1` | 4-pin JST-PH — power and CAN harness |
+| `J10` | 8-pin JST-PH — sensor harness |
+| `J3` `J4` `J5` `J6` `J7` `J8` | 0.1" pin headers — UART0, I²C/Qwiic, SPI, WS2812, spare IO, rail break-out |
+
+The mounting holes, the 13 solder jumpers and the 7 test points are bare
+copper, not parts — nothing to fit.
+
+### After the boards arrive
+
+Before connecting anything to a car: put a bench supply on `J1` at **12 V with
+the current limit set to 100 mA**, and check `TP1` (+VBAT), `TP2` (+5 V),
+`TP3` (+3V3) and `TP4` (+5VS) with a meter. If a rail is wrong or the supply
+hits its limit, nothing is damaged. Then set the jumpers for your sensors
+per the table in §3 — they ship open, which is the 0–3.3 V range with the
+10 kΩ in circuit.
+
+### This board has never been fabricated
+
+Rev A has been checked as hard as software can check it — ERC, DRC, a
+datasheet review that caught five real defects (§7), and part-by-part JLC
+sourcing — but no one has yet held one. Treat the first order as a
+prototype run: build a few, not fifty.
 
 **Out of scope:** firmware (TWAI, SDMMC, ADS1115, WS2812 on GPIO48, SPI
 client). The GPIO map in §6 is the firmware contract.
