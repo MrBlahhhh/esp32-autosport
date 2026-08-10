@@ -76,9 +76,60 @@ FIXED = {
     "HRO TYPE-C-31-M-12":       (78.5, 8.0, 90),    # right edge, opening out
     "Hirose DM3D-SF":           (75.0, 41.0, 270),  # right edge, card out
     "value:Spare IO":           (11.5, 3.0, 90),    # top edge, row along X
-    "value:UART0":              (69.0, 69.5, 90),
-    "value:I2C / Qwiic":        (40.0, 69.5, 90),   # bottom edge
-    "value:Rail break-out":     (54.5, 69.5, 90),
+    "value:UART0":              (12.0, 69.5, 90),
+    "value:I2C / Qwiic":        (22.0, 69.5, 90),   # bottom edge, left
+    "value:Rail break-out":     (32.0, 69.5, 90),
+    "value:SPI":                (42.0, 69.5, 90),
+    "value:WS2812":             (78.0, 40.0, 0),    # right edge near LEDs
+}
+
+# Buck islands — kept in sync with gen/route_bucks.py PLACE. Keyed by ref
+# after assign_refs() so regenerating the board does not scatter the loops.
+REF_FIXED = {
+    "C4":  (34.5, 44.0, 0),
+    "C3":  (34.5, 47.8, 0),
+    "U2":  (41.0, 45.0, 0),
+    "C5":  (41.0, 39.5, 0),
+    "L1":  (50.0, 43.0, 0),
+    "C8":  (55.0, 48.5, 0),
+    "C10": (45.5, 48.5, 0),
+    "C9":  (55.0, 51.8, 0),
+    "TP2": (45.5, 51.8, 0),
+    "R3":  (34.5, 40.5, 0),
+    "R7":  (45.5, 39.5, 0),
+    "R4":  (38.5, 51.0, 0),
+    "R6":  (42.5, 51.0, 0),
+    "R5":  (46.5, 51.0, 0),
+    "C6":  (50.5, 51.0, 0),
+    "C7":  (46.5, 54.0, 0),
+    "R8":  (42.5, 54.0, 0),
+    "U3":  (41.0, 59.0, 0),
+    "C11": (41.0, 53.5, 0),
+    "L2":  (50.0, 57.0, 0),
+    "C14": (55.0, 62.5, 0),
+    "C16": (45.5, 62.5, 0),
+    "C15": (55.0, 65.8, 0),
+    "TP3": (45.5, 65.8, 0),
+    "R9":  (34.5, 55.5, 0),
+    "R13": (45.5, 53.5, 0),
+    "R10": (34.5, 65.5, 0),
+    "R12": (38.5, 65.5, 0),
+    "R11": (42.5, 65.5, 0),
+    "C12": (46.5, 65.5, 0),
+    "C13": (42.5, 68.5, 0),
+    "R14": (38.5, 68.5, 0),
+    "SW1": (78.0, 55.0, 0),
+    "SW2": (78.0, 61.0, 0),
+    "D6":  (78.0, 49.0, 0),
+    "D7":  (78.0, 46.0, 0),
+    "Q2":  (60.0, 28.0, 0),
+    "Q3":  (64.0, 28.0, 0),
+    "R25": (60.0, 24.5, 0),
+    "R26": (64.0, 24.5, 0),
+    "R24": (68.0, 24.5, 0),
+    "F1":  (29.0, 51.0, 0),
+    "FB1": (24.0, 51.0, 0),
+    "Q1":  (26.0, 43.0, 0),
 }
 
 HOLES = [(4.0, 4.0), (4.0, 68.0), (66.0, 4.0), (80.0, 26.0)]
@@ -205,6 +256,12 @@ def main():
 
             if p["footprint"].startswith("MountingHole"):
                 hole_parts.append(fp)
+                continue
+            if p["ref"] in REF_FIXED:
+                x, y, rot = REF_FIXED[p["ref"]]
+                fp.SetOrientationDegrees(rot)
+                fp.SetPosition(pt(x, y))
+                fixed_parts.append(fp)
                 continue
             key_m, key_v = p["mpn"], "value:" + p["value"]
             if key_m in FIXED or key_v in FIXED:

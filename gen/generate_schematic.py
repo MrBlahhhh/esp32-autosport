@@ -320,8 +320,11 @@ SOD123 = "Diode_SMD:D_SOD-123"
 LED0805 = "LED_SMD:LED_0805_2012Metric"
 JST4 = "Connector_JST:JST_PH_B4B-PH-K_1x04_P2.00mm_Vertical"
 JST8 = "Connector_JST:JST_PH_B8B-PH-K_1x08_P2.00mm_Vertical"
+HDR3 = "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical"
 HDR4 = "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"
+HDR6 = "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical"
 HDR8 = "Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical"
+SOT235 = "Package_TO_SOT_SMD:SOT-23-5"
 SJ2 = "Jumper:SolderJumper-2_P1.3mm_Open_Pad1.0x1.5mm"
 SJ2B = "Jumper:SolderJumper-2_P1.3mm_Bridged_Pad1.0x1.5mm"
 SJ3 = "Jumper:SolderJumper-3_P1.3mm_Open_Pad1.0x1.5mm"
@@ -498,16 +501,17 @@ part(mc, "U", "RF_Module:ESP32-S3-WROOM-1", "ESP32-S3-WROOM-1-N16R8",
          "15": "IO3", "16": "IO46",
          "17": "SD_D3", "18": "SD_D2", "19": "SD_D1", "20": "SD_D0",
          "21": "SD_CMD", "22": "SD_CLK", "23": "CAN_S",
-         "24": "IO47", "25": "IO48", "26": "IO45", "27": "MCU_BOOT",
+         "24": "SPI_CS", "25": "LED_DIN_MCU", "26": "IO45", "27": "MCU_BOOT",
          "31": "I2C_SDA", "32": "I2C_SCL",
-         "33": "IO40", "34": "IO41", "35": "IO42",
+         "33": "SPI_SCK", "34": "SPI_MISO", "35": "SPI_MOSI",
          "36": "UART_RX", "37": "UART_TX", "38": "AIN2", "39": "AIN1",
          # Hidden in the symbol; KiCad bonds them to GND by name.
          "40": "GND", "41": "GND",
      },
      "ESP32-S3-WROOM-1-N16R8", lcsc="C2913202",
      note="16MB flash / 8MB octal PSRAM. Pins 28-30 (IO35/36/37) are consumed by "
-     "the octal PSRAM and must stay unconnected.",
+     "the octal PSRAM and must stay unconnected. IO3/IO45/IO46 on the spare "
+     "header are strapping pins -- leave floating at boot.",
      nc=("28", "29", "30"))
 
 R(mc, "10k", "+3V3", "MCU_EN")
@@ -557,9 +561,31 @@ part(mc, "D", "Device:LED", "amber", LED0805, {"1": "GND", "2": "LED1_A"})
 R(mc, "1k", "LED2", "LED2_A")
 part(mc, "D", "Device:LED", "blue", LED0805, {"1": "GND", "2": "LED2_A"})
 
-part(mc, "J", "Connector_Generic:Conn_01x08", "Spare IO", HDR8,
-     {"1": "IO3", "2": "IO45", "3": "IO46", "4": "IO47",
-      "5": "IO48", "6": "IO40", "7": "IO41", "8": "IO42"},
+# SPI breakout for MCP2515 / CC1101 / MAX6675 / etc.
+part(mc, "J", "Connector_Generic:Conn_01x06", "SPI", HDR6,
+     {"1": "+3V3", "2": "GND", "3": "SPI_SCK", "4": "SPI_MISO",
+      "5": "SPI_MOSI", "6": "SPI_CS"},
+     note="IO40 SCK / IO41 MISO / IO42 MOSI / IO47 CS -- GPIO-matrix SPI")
+
+# WS2812 shift-light header: true 5 V data via AHCT buffer (3.3 V TTL-friendly
+# input, 5 V rail). IO48 is RMT-capable and not a strapping pin.
+R(mc, "33", "LED_DIN_MCU", "LED_DIN_A",
+  note="Edge-rate limit into the level shifter")
+part(mc, "U", "74xGxx:74AHCT1G125", "74AHCT1G125", SOT235,
+     {"1": "GND", "2": "LED_DIN_A", "3": "GND", "4": "LED_DIN", "5": "+5V"},
+     "SN74AHCT1G125DBVR", lcsc="C7975",
+     note="5 V buffer so WS2812 DIN is a real 5 V rail, not 3.3 V hoping")
+C(mc, "100nF 16V", "+5V", "GND", note="AHCT decoupling")
+part(mc, "PF", "Device:Polyfuse", "0.5A hold", "Resistor_SMD:R_1206_3216Metric",
+     {"1": "+5V", "2": "LED_5V"}, "Bourns MF-MSMF050",
+     "Fused tap for the shift-light strip (8x WS2812 ~0.5 A worst case)")
+part(mc, "J", "Connector_Generic:Conn_01x03", "WS2812", HDR3,
+     {"1": "LED_5V", "2": "LED_DIN", "3": "GND"},
+     note="Shift-light header: +5V / 5V-logic DIN / GND")
+
+# Remaining free GPIOs after SPI + WS2812. All three are strapping pins.
+part(mc, "J", "Connector_Generic:Conn_01x03", "Spare IO", HDR3,
+     {"1": "IO3", "2": "IO45", "3": "IO46"},
      note="IO3/IO45/IO46 are strapping pins -- leave floating at boot")
 part(mc, "J", "Connector_Generic:Conn_01x04", "Rail break-out", HDR4,
      {"1": "+5V", "2": "+3V3", "3": "GND", "4": "GND"})

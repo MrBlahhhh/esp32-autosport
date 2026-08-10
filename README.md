@@ -11,8 +11,10 @@ harness convention (12 V / GND / CAN_H / CAN_L), same default-on 120 Ω
 termination jumper — but trades the second CAN channel for an onboard microSD
 socket and conditioned analog inputs.
 
-**Status: schematic complete and machine-verified. PCB is 84 x 72 mm,
-4-layer, generated and placed (DRC-clean), not yet routed.**
+**Status: schematic complete, ERC-clean on KiCad 9.0 (107 nets / 168
+component instances). PCB is 84 × 72 mm, 4-layer, placed; buck SW/VIN copper
+is partially scripted (`gen/route_bucks.py`). Full routing is the remaining
+work — see §10.**
 
 ---
 
@@ -25,9 +27,9 @@ socket and conditioned analog inputs.
 | CAN | 1× CAN 2.0B, TJA1051T/3, ESP32-S3 TWAI controller, jumper-selectable split termination |
 | Storage | microSD, 4-bit SDMMC, switchable card supply |
 | Analog in | 4 channels, solder-jumper divider (0–3.3 V / 0–5 V / 0–16 V) + optional pull-up bias, shared by the ESP32 ADC and a 16-bit ADS1115 |
-| Extras | Battery voltage monitor, USB-C (native USB), I²C/Qwiic header, UART0 header, spare-IO header |
+| Extras | Battery voltage monitor, USB-C (native USB), I²C/Qwiic, UART0, SPI breakout, WS2812 5 V DIN header, spare-IO header |
 | Rails | +5 V @ 1 A, +3V3 @ 1 A, +5 V sensor excitation (separately fused) |
-| Board area | 155 components, 84 distinct BOM lines |
+| Board area | 168 component instances, 87 distinct BOM lines |
 
 ---
 
@@ -139,7 +141,7 @@ Every channel lands on **ADC1** (`GPIO1`, `GPIO2`, `GPIO4`, `GPIO5`), which is
 the half of the ESP32-S3 ADC that keeps working while WiFi is active. ADC2 is
 unusable with WiFi up — that constraint drove the pin assignment.
 
-The same four conditioned nodes also feed `U7`, an **ADS1115** (16-bit
+The same four conditioned nodes also feed `U8`, an **ADS1115** (16-bit
 delta-sigma, on the existing I²C bus at 0x48). The ESP32-S3's internal ADC is
 only good for ±1–2 % even after calibration — ±0.2 AFR on a 0–5 V wideband
 output — so firmware picks per channel: fast-and-rough on the internal ADC, or
@@ -213,13 +215,27 @@ MCU will back-feed the card through its I/O pins while its supply is off.
 | 13, 14 | IO19, IO20 | `USB_DM`, `USB_DP` | Native USB |
 | 31, 32 | IO38, IO39 | `I2C_SDA`, `I2C_SCL` | Qwiic header |
 | 36, 37 | IO44, IO43 | `UART_RX`, `UART_TX` | UART0 header |
+| 33–35, 24 | IO40–42, IO47 | `SPI_SCK`, `SPI_MISO`, `SPI_MOSI`, `SPI_CS` | SPI breakout |
+| 25 | IO48 | `LED_DIN_MCU` | WS2812 data (via 5 V AHCT buffer → header) |
 | 27 | IO0 | `MCU_BOOT` | BOOT button |
 | 3 | EN | `MCU_EN` | RESET button |
-| 15, 16, 24, 25, 26, 33–35 | IO3, IO46, IO47, IO48, IO45, IO40–42 | — | Spare-IO header |
+| 15, 16, 26 | IO3, IO46, IO45 | — | Spare-IO header (strapping — leave floating at boot) |
 | 28, 29, 30 | IO35, IO36, IO37 | — | **Unusable** — octal PSRAM |
 
 `IO3`, `IO45` and `IO46` are strapping pins and are broken out with no pull
 resistors; do not hang anything on them that drives a level at boot.
+
+### WS2812 shift-light header
+
+`J6` (silk **WS2812**): `LED_5V` / `LED_DIN` / `GND`. `LED_DIN` is driven by a
+`74AHCT1G125` powered from `+5V`, so the strip sees a real 5 V logic level.
+Firmware bit-bangs / RMT on **GPIO48**. `LED_5V` is behind a 0.5 A polyfuse off
+the board 5 V rail — enough for an 8-LED stick, not a full belly-band.
+
+### SPI breakout
+
+`+3V3` / `GND` / `SCK` / `MISO` / `MOSI` / `CS` on GPIO40/41/42/47. Intended for
+an external MCP2515 (second CAN), CC1101 (433 MHz TPMS), or MAX6675, etc.
 
 ---
 
@@ -256,7 +272,7 @@ Two more issues surfaced while reading the datasheet, both fixed:
   output, CB into FB: 121 k / 3.3 nF / 270 pF on 5 V, 95.3 k / 3.3 nF / 270 pF
   on 3.3 V), sized per TI's design example for ≈20 mV of ramp at 14 V in.
 
-5. ~~ESP32-S3 ADC linearity~~ — resolved for the AFR use case: `U7`, an
+5. ~~ESP32-S3 ADC linearity~~ — resolved for the AFR use case: `U8`, an
    onboard ADS1115 (16-bit, I²C), now shares the four conditioned input
    nodes, and the divider resistors are 0.1 % thin-film. See §3.
 
@@ -282,6 +298,7 @@ were checked against the LCSC catalog (2026-08):
 | Reverse-batt FET | IPD068N10N3G | C88066 | Replaces PSMN4R3-100BSE, **which does not exist** (nearest real Nexperia part is a D2PAK); DPAK, drops into the same footprint, 6.8 mΩ costs ~3 mV at load |
 | CAN transceiver | TJA1051T/3/1J | C38695 | NXP original, in stock |
 | Precision ADC | ADS1115IDGSR | C37593 | Non-automotive variant — the Q1 needs a manufacturer quote at DigiKey |
+| WS2812 buffer | SN74AHCT1G125DBVR | C7975 | 5 V DIN driver for the shift-light header |
 
 Still to pick from the live JLC catalog at layout time (generic, many options):
 the two buck inductors (33 µH / 22 µH shielded molded, ≥ 2 A Isat — Coilcraft
@@ -309,7 +326,8 @@ resistors (commodity at LCSC).
 | `gen/generate_schematic.py` | Generator — edit this, not the `.kicad_sch` files |
 | `gen/validate.py` | Verifies the output with KiCad itself |
 | `gen/generate_pcb.py` | Board generator — run with KiCad's bundled Python |
-| `esp32s3-can-sd-logger.kicad_pcb` | Generated 4-layer board, placed, unrouted |
+| `gen/route_bucks.py` | Places buck islands + routes SW/VIN critical copper |
+| `esp32s3-can-sd-logger.kicad_pcb` | Generated 4-layer board, placed, partially routed |
 | `footprints/esp32autosport.pretty` | Project footprints (TDK ACT45B CAN choke) |
 | `plots/board-placement.png` | Render of the placed board |
 
@@ -349,8 +367,8 @@ python3 gen/validate.py
 
 `validate.py` loads every sheet through KiCad, exports the hierarchy's netlist,
 asserts that KiCad's own extracted connectivity matches `netlist.txt`
-node-for-node, and runs ERC where available. It currently passes on 104 nets /
-162 component instances.
+node-for-node, and runs ERC where available. It currently passes on **107 nets /
+168 component instances**.
 
 The generator embeds symbol definitions copied verbatim from the installed
 libraries, so the embedded copies always match whatever KiCad generation you
@@ -375,21 +393,61 @@ footprints, assigns every pad its net, and places parts into functional zones.
 zones, press `B` in KiCad to fill), JLCPCB JLC04161H-7628 stackup assumed,
 0.2 mm minimum drill to match the LM5164 thermal vias.
 
+`gen/route_bucks.py` then stacks the two LM5164 islands on the left
+(5 V upper / 3V3 lower, clear of the microSD) and lays **SW + VIN** copper only.
+Bootstrap, VOUT, FB/ramp, and everything else is still ratsnest.
+
 Placement logic, all encoded in the generator:
 
-- **Left edge:** sensor harness (`J8`) and power/CAN harness (`J1`) — one
+- **Left edge:** sensor harness (`J10`) and power/CAN harness (`J1`) — one
   wiring direction toward the car.
 - **Top:** four identical analog channel columns with their solder jumpers
   facing up for probing; ESP32 module top-center with the **antenna
   overhanging the board edge** (its keepout area falls entirely off-board);
   Spare-IO header left of it.
-- **Right edge:** USB-C and microSD for bench access, then RESET/BOOT and the
-  status LEDs.
-- **Bottom band:** battery front end (fuse, ideal diode, TVS, bulk) beside
-  `J1`, then the 5 V and 3.3 V bucks each packed with their own RON/FB/ripple
-  network and output caps; UART/I2C/rail headers on the bottom edge.
+- **Right edge:** USB-C and microSD for bench access, then RESET/BOOT,
+  status LEDs, and the WS2812 header.
+- **Bottom band:** battery front end beside `J1`, stacked bucks, then
+  UART0 / I2C / rail / SPI headers along the bottom edge.
 
-`kicad-cli pcb drc` passes with **zero violations** (335 unconnected items
-are the ratsnest — routing has not been done yet). Routing order when it
-starts: buck power loops first, then SDMMC (length-matched-ish, short), USB
-differential pair, CAN pair, analog last, stitching vias around the planes.
+Do **not** trust an older “DRC-clean / zero violations” claim for the current
+board: silk is noisy after auto-pack, and regenerating the PCB wipes tracks
+until `route_bucks.py` is re-run. Copper DRC for the scripted SW/VIN segments
+still needs a visual pass in KiCad after plane fill (`B`).
+
+Routing order to finish:
+
+1. Buck loops — bootstrap (`C5`/`C11`), VOUT to output caps, FB/ramp (hand-route;
+   scripted Manhattan kept shorting through the LM5164 EP)
+2. SDMMC (short, roughly length-matched)
+3. USB differential pair
+4. CAN pair + choke close to `J1`
+5. SPI / WS2812 / headers
+6. Analog last; stitching vias around the planes
+
+---
+
+## 10. Handoff — remaining work
+
+**Schematic is done.** Do not redesign power/CAN/analog unless a datasheet
+conflict appears. Edit `gen/generate_schematic.py` only; then
+`python gen/generate_schematic.py && python gen/validate.py`.
+
+**Finish the PCB:**
+
+1. Open `esp32s3-can-sd-logger.kicad_pro` in KiCad 9.
+2. Nudge placement where courtyards collide (frontend `U1`/`D1` vs buck input
+   caps; stray auto-pack parts on `L1`/`L2`; `mcu_misc` zone overflow for the
+   AHCT / new headers).
+3. Hand-route remaining nets in the order above; fill zones (`B`); iterate DRC.
+4. Re-run after any schematic change:
+   ```sh
+   python gen/generate_schematic.py && python gen/validate.py
+   "C:\Program Files\KiCad\9.0\bin\python.exe" gen/generate_pcb.py
+   "C:\Program Files\KiCad\9.0\bin\python.exe" gen/route_bucks.py
+   ```
+5. Before JLCPCB order: lock LCSC for L1/L2, C2 bulk, 0.1% dividers; clean silk;
+   export Gerbers + BOM.
+
+**Out of scope for layout:** firmware (TWAI, SDMMC, ADS1115, WS2812 on GPIO48,
+SPI client). GPIO map in §6 is the firmware contract.
