@@ -59,11 +59,39 @@ def children(node, tag):
     return [c for c in node if isinstance(c, list) and c and c[0] == tag]
 
 
+def _property_spans(text):
+    """[(start, end)] of each top-level (property ...) block in a symbol."""
+    spans = []
+    depth, i, in_str = 0, 0, False
+    start = None
+    while i < len(text):
+        ch = text[i]
+        if in_str:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+        elif ch == "(":
+            if depth == 1 and start is None and text.startswith("(property ", i):
+                start = i
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 1 and start is not None:
+                spans.append((start, i + 1))
+                start = None
+        i += 1
+    return spans
+
+
 # The schematic format this generator emits, and the symbol-library format its
 # embedded definitions were validated against.  KiCad opens older schematics and
 # upgrades them on load, so emitting the 7.0 format is safe on 7, 8 and 9 alike.
 SCH_FORMAT_VERSION = "20230121"          # KiCad 7.0
-VALIDATED_SYMBOL_VERSION = "20220914"    # KiCad 7.0 symbol libraries
+VALIDATED_SYMBOL_VERSION = "20241209"    # KiCad 9.0 symbol libraries
 
 
 def find_symbol_dir():
@@ -108,7 +136,7 @@ class SymbolLibs:
         path = os.path.join(self.symbol_dir, lib + ".kicad_sym")
         if not os.path.exists(path):
             raise SystemExit("symbol library not found: " + path)
-        text = open(path, encoding="utf-8").read()
+        text = open(path, encoding="utf-8").read().replace("\r\n", "\n")
         root = parse_sexp(text)[0]
         ver = children(root, "version")
         if ver and self.lib_version is None:
@@ -117,8 +145,9 @@ class SymbolLibs:
 
         # Byte-exact source text for each top-level symbol, so the definitions
         # we embed in the schematic are identical to the library's.
+        # One indent level is two spaces (7.0 libraries) or one tab (9.0).
         raw = {}
-        for m in re.finditer(r'^  \(symbol "([^"]+)" ', text, re.M):
+        for m in re.finditer(r'^(?:  |\t)\(symbol "([^"]+)"', text, re.M):
             start = m.start()
             depth, i, in_str = 0, start, False
             while i < len(text):
@@ -149,6 +178,13 @@ class SymbolLibs:
             raise SystemExit("symbol not found: " + lib_id)
         return self._parsed[lib][name]
 
+    def has(self, lib_id):
+        lib, name = lib_id.split(":", 1)
+        if not os.path.exists(os.path.join(self.symbol_dir, lib + ".kicad_sym")):
+            return False
+        self._load(lib)
+        return name in self._parsed[lib]
+
     def extends(self, lib_id):
         ext = children(self.symbol(lib_id), "extends")
         return unquote(ext[0][1]) if ext else None
@@ -163,26 +199,31 @@ class SymbolLibs:
         """Library source for the symbol, renamed to its full lib_id.
 
         A schematic's lib_symbols cache cannot express `extends`: KiCad stores
-        derived symbols flattened.  So when a symbol extends another we splice
-        the parent's geometry together with the child's own properties.
+        derived symbols flattened.  KiCad's own flattening keeps the parent's
+        geometry but the child's property fields verbatim (positions and text
+        effects included), so the splice must swap whole property blocks or
+        ERC flags the cached copy as differing from the library's.
         """
         lib, name = lib_id.split(":", 1)
         self._load(lib)
         parent = self.extends(lib_id)
         if parent is None:
             text = self._raw[lib][name]
-            return text.replace('(symbol "%s" ' % name,
-                                '(symbol "%s:%s" ' % (lib, name), 1)
+            return text.replace('(symbol "%s"' % name,
+                                '(symbol "%s:%s"' % (lib, name), 1)
 
         text = self._raw[lib][parent]
+        child = self._raw[lib][name]
+        pspans = _property_spans(text)
+        child_props = [child[a:b] for a, b in _property_spans(child)]
+        if pspans and child_props:
+            first, last = pspans[0][0], pspans[-1][1]
+            indent = text[:first].rsplit("\n", 1)[-1]
+            text = text[:first] + ("\n" + indent).join(child_props) + text[last:]
         # Sub-symbol names must follow the derived symbol, e.g. FOO_1_1.
         text = text.replace('(symbol "%s_' % parent, '(symbol "%s_' % name)
-        text = text.replace('(symbol "%s" ' % parent,
-                            '(symbol "%s:%s" ' % (lib, name), 1)
-        for key, value in self.properties(lib_id).items():
-            pattern = re.compile(r'(\(property "%s" )"(?:[^"\\]|\\.)*"'
-                                 % re.escape(key))
-            text = pattern.sub(lambda m, v=value: m.group(1) + '"%s"' % v, text, count=1)
+        text = text.replace('(symbol "%s"' % parent,
+                            '(symbol "%s:%s"' % (lib, name), 1)
         return text
 
     def pins(self, lib_id):
@@ -406,7 +447,7 @@ R(pw, "1k", "PWR_LED_K", "GND")
 
 for net in ["+VBAT", "+5V", "+3V3", "+5VS", "GND"]:
     part(pw, "TP", "Connector:TestPoint", net, TP, {"1": net})
-for net in ["GND", "+VBAT", "+5V", "+3V3", "+5VS", "VBUS", "SD_VDD"]:
+for net in ["GND", "+VBAT", "VBAT_FB", "+5V", "+3V3", "+5VS", "VBUS", "SD_VDD"]:
     flag(pw, net)
 for _ in range(4):
     part(pw, "H", "Mechanical:MountingHole", "M3", MH, {})
@@ -951,12 +992,35 @@ def main():
     if libs.lib_version != VALIDATED_SYMBOL_VERSION:
         print(
             "WARNING: symbol libraries in %s are format %s, but the embedded\n"
-            "         definitions were validated against %s (KiCad 7.0).\n"
-            "         Newer libraries may use syntax the emitted schematic format\n"
-            "         (%s) does not accept. Run gen/validate.py before trusting the\n"
-            "         output, or point --symbol-dir at a KiCad 7 library set."
+            "         definitions were last validated against %s (KiCad 9.0).\n"
+            "         A different library generation may use syntax the emitted\n"
+            "         schematic format (%s) does not accept. Run gen/validate.py\n"
+            "         before trusting the output."
             % (args.symbol_dir, libs.lib_version, VALIDATED_SYMBOL_VERSION,
                SCH_FORMAT_VERSION))
+
+    # The KiCad 9 libraries moved the generic MOSFET symbols out of Device.
+    # Resolve each part against whichever library the local install has; the
+    # symbols are pin-identical, so this only changes the recorded lib_id.
+    alternates = {
+        "Device:Q_NMOS_GSD": ("Transistor_FET:Q_NMOS_GSD",),
+        "Device:Q_PMOS_GSD": ("Transistor_FET:Q_PMOS_GSD",),
+    }
+    resolved = {}
+    for sh in SHEETS:
+        for p in sh["parts"]:
+            lid = p["lib_id"]
+            if lid not in resolved:
+                resolved[lid] = lid
+                if not libs.has(lid):
+                    for alt in alternates.get(lid, ()):
+                        if libs.has(alt):
+                            print("symbol %s not in these libraries; using %s"
+                                  % (lid, alt))
+                            resolved[lid] = alt
+                            break
+            p["lib_id"] = resolved[lid]
+
     assign_refs()
     place(libs)
 

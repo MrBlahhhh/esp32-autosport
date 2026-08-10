@@ -277,8 +277,9 @@ kicad-cli sch erc --output erc.json --format json \
 ```
 
 On KiCad 7 the check is skipped with a notice, since the subcommand does not
-exist there — that was the situation when this schematic was first validated,
-so **ERC has not yet been run on this design**. It is the first thing to do.
+exist there. **ERC passes clean on KiCad 9.0** (no errors, no warnings) as of
+rev A; the committed files embed symbol definitions from the KiCad 9 libraries,
+so opening them on an older KiCad may report harmless lib-mismatch warnings.
 
 ### Regenerating
 
@@ -296,14 +297,14 @@ asserts that KiCad's own extracted connectivity matches `netlist.txt`
 node-for-node, and runs ERC where available. It currently passes on 102 nets /
 153 component instances.
 
-One caveat if you regenerate on KiCad 8 or 9: the generator embeds symbol
-definitions copied verbatim from the installed libraries, and those were
-validated against the KiCad 7 library format (`20220914`). Newer libraries may
-use syntax the emitted schematic format does not accept, so the generator prints
-a warning when it detects a different library generation. Run `validate.py`
-afterwards — it will catch a sheet that fails to load. If it does fail, point
-`--symbol-dir` at a KiCad 7 library set, or bump `SCH_FORMAT_VERSION` in the
-generator to match your KiCad and re-validate.
+The generator embeds symbol definitions copied verbatim from the installed
+libraries, so the embedded copies always match whatever KiCad generation you
+regenerate on (it handles both the 7/8 space-indented and the 9 tab-indented
+library formats, and resolves the generic MOSFET symbols from `Transistor_FET`
+where KiCad 9 moved them out of `Device`). The generator prints a warning when
+the library generation differs from the one last validated against — run
+`validate.py` afterwards; it will catch a sheet that fails to load and runs a
+full ERC.
 
 Editing the `.kicad_sch` files by hand is fine — they are ordinary KiCad files —
 but the next generator run will overwrite them.
