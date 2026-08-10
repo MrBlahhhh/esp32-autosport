@@ -26,7 +26,7 @@ socket and conditioned analog inputs.
 | Analog in | 4 channels, solder-jumper divider (0–3.3 V / 0–5 V / 0–16 V) + optional pull-up bias |
 | Extras | Battery voltage monitor, USB-C (native USB), I²C/Qwiic header, UART0 header, spare-IO header |
 | Rails | +5 V @ 1 A, +3V3 @ 1 A, +5 V sensor excitation (separately fused) |
-| Board area | 146 components, 74 distinct BOM lines |
+| Board area | 153 components, 81 distinct BOM lines |
 
 ---
 
@@ -96,7 +96,7 @@ rather than two different regulators.
 ### 5 V sensor excitation
 
 `+5VS` is the +5 V rail behind `PF1` (200 mA hold / 400 mA trip polyfuse), a
-ferrite, and `D2` (SMAJ5.0A). A sensor wire shorted to chassis or to battery
+ferrite, and `D3` (SMAJ5.0A). A sensor wire shorted to chassis or to battery
 trips the polyfuse and clamps the transient without taking the board down.
 
 Note this is a *fused tap off the 5 V rail*, not a separately regulated
@@ -138,7 +138,7 @@ Every channel lands on **ADC1** (`GPIO1`, `GPIO2`, `GPIO4`, `GPIO5`), which is
 the half of the ESP32-S3 ADC that keeps working while WiFi is active. ADC2 is
 unusable with WiFi up — that constraint drove the pin assignment.
 
-`R60`/`R61` divide `+VBAT` by 11 onto `GPIO6` for battery-voltage logging:
+`R62`/`R63` divide `+VBAT` by 11 onto `GPIO6` for battery-voltage logging:
 14.0 V reads 1.27 V, and the 36 V top of the input range reads 3.27 V.
 
 ---
@@ -146,20 +146,20 @@ unusable with WiFi up — that constraint drove the pin assignment.
 ## 4. CAN
 
 `U6` is a TJA1051T/3 — 5 V bus drive with a separate `VIO` pin tied to +3V3, so
-the ESP32 sees 3.3 V logic with no level shifter. `S` is pulled low by `R37` so
+the ESP32 sees 3.3 V logic with no level shifter. `S` is pulled low by `R39` so
 the transceiver comes up in normal mode with the MCU still in reset; `GPIO21`
 can raise it for silent (listen-only) sniffing.
 
 Bus side, in order from the transceiver out:
 
 - `L3` common-mode choke (Würth WE-SL2)
-- Split termination: two 60.4 Ω in series with `C23` 4.7 nF to ground at the
+- Split termination: two 60.4 Ω in series with `C27` 4.7 nF to ground at the
   midpoint. Split termination beats a single 120 Ω resistor because it gives
   the common-mode noise somewhere to go instead of reflecting it.
 - `JP1` in series with the top half — **bridged by default**, matching the
   Autosport Labs convention of shipping terminated. Cut the trace when the
   board is a mid-bus node rather than an end node.
-- `D7`/`D8` SMAJ26CA bidirectional clamps to ground on each line.
+- `D8`/`D9` SMAJ26CA bidirectional clamps to ground on each line.
 
 CAN_H/CAN_L run to `J1` pins 3 and 4, so one 4-pin JST-PH carries power and bus
 in a single harness.
@@ -215,21 +215,39 @@ resistors; do not hang anything on them that drives a level at boot.
 
 ## 7. Review before layout
 
-Honest list of what a second pair of eyes should check:
+Resolved in the rev A review (2026-08, against datasheet SNVSAU4D and TI
+drawing 4214849/B):
 
-1. **`R4`/`R9` (RON = 100 kΩ)** are placeholders targeting ~400 kHz at 14 V in.
-   Compute the real value from the LM5164 datasheet's on-time equation for each
-   output voltage, and confirm the minimum on-time is still respected at the
-   53 V clamp level (worst case ≈ 156 ns for the 3.3 V rail).
-2. **`U2`/`U3` footprint.** The exposed-pad dimensions on
-   `SOIC-8-1EP_3.9x4.9mm_P1.27mm_EP2.41x3.3mm_ThermalVias` were chosen as the
-   closest stock match and must be confirmed against TI's DDA package drawing.
-3. **Load-dump assumption** (§2) — verify the target vehicle uses a centrally
-   suppressed alternator.
-4. **Clamp injection.** The BAT54S clamps dump current into +3V3 when an input
-   is overdriven. With ~44 µF and the MCU always drawing current the rail will
-   not run away, but if the board can be powered with the MCU held in reset,
-   check the rail does not lift.
+1. ~~RON placeholders~~ — computed from Eq. 12: **31.6 kΩ → 396 kHz** on the
+   5 V rail, **20.5 kΩ → 402 kHz** on the 3.3 V rail. Minimum on-time at the
+   53.3 V clamp is 237 ns / 154 ns, both far above the 50 ns floor.
+2. ~~Footprint~~ — the original `EP2.41x3.3mm` exposed pad was *smaller* than
+   the DDA0008B pad itself (max 2.71 × 3.4 mm). Now on
+   `EP2.95x4.9mm_Mask2.71x3.4mm_ThermalVias`, which matches TI's example land
+   pattern exactly (2.95 × 4.9 copper, 2.71 × 3.4 mask-defined opening).
+3. ~~Load-dump assumption~~ — confirmed: the target vehicle's alternator never
+   exceeds 20 V, so the SMCJ33A's 33 V standoff has comfortable margin and the
+   centralised-suppression assumption in §2 holds.
+4. ~~Clamp injection~~ — quantified: one analog input shorted to 20 V battery
+   back-feeds ≈1.6 mA through its BAT54S into +3V3. With the MCU running
+   (≥ 20 mA) the rail cannot lift, but in deep sleep the always-on load is only
+   ≈1.3 mA (power LED), so one faulted channel floats the rail to ≈3.6 V and
+   two would exceed the ESP32's absolute maximum. Fixed with `D2`, a 3.6 V
+   zener rail clamp (MM3Z3V6T1G).
+
+Two more issues surfaced while reading the datasheet, both fixed:
+
+- **Bootstrap capacitors were 100 nF.** The LM5164 datasheet mandates exactly
+  2.2 nF and warns that larger values overstress the internal VCC regulator
+  and damage the device. Both `CBST` are now 2.2 nF 50 V X7R.
+- **No feedback ripple injection.** The outputs are all-ceramic, so FB had no
+  in-phase ripple — the datasheet (Table 6-1) says a COT converter is unstable
+  without it. Both rails now carry a Type-3 network (RA from SW, CA to the
+  output, CB into FB: 121 k / 3.3 nF / 270 pF on 5 V, 95.3 k / 3.3 nF / 270 pF
+  on 3.3 V), sized per TI's design example for ≈20 mV of ramp at 14 V in.
+
+Still open for a second pair of eyes:
+
 5. **ESP32-S3 ADC linearity** is mediocre even calibrated. If any channel needs
    better than roughly ±1–2 %, put an external SAR ADC on the I²C/SPI header
    rather than fighting the internal one.
@@ -294,8 +312,8 @@ python3 gen/validate.py
 
 `validate.py` loads every sheet through KiCad, exports the hierarchy's netlist,
 asserts that KiCad's own extracted connectivity matches `netlist.txt`
-node-for-node, and runs ERC where available. It currently passes on 102 nets /
-153 component instances.
+node-for-node, and runs ERC where available. It currently passes on 104 nets /
+160 component instances.
 
 The generator embeds symbol definitions copied verbatim from the installed
 libraries, so the embedded copies always match whatever KiCad generation you

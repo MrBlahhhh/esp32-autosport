@@ -309,7 +309,10 @@ C1206 = "Capacitor_SMD:C_1206_3216Metric"
 SOT23 = "Package_TO_SOT_SMD:SOT-23"
 SOT236 = "Package_TO_SOT_SMD:SOT-23-6"
 # NOTE: confirm the exposed-pad size against TI's DDA package drawing before layout.
-SO8EP = "Package_SO:SOIC-8-1EP_3.9x4.9mm_P1.27mm_EP2.41x3.3mm_ThermalVias"
+# TI DDA0008B (SO PowerPAD-8): pad max 2.71x3.4mm, TI land 2.95x4.9mm copper
+# with a 2.71x3.4mm solder-mask-defined opening -- this footprint matches it.
+SO8EP = ("Package_SO:SOIC-8-1EP_3.9x4.9mm_P1.27mm_"
+         "EP2.95x4.9mm_Mask2.71x3.4mm_ThermalVias")
 SOIC8 = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
 SMC = "Diode_SMD:D_SMC"
 SMA = "Diode_SMD:D_SMA"
@@ -403,12 +406,22 @@ part(pw, "U", "Regulator_Switching:LM5164DDA", "LM5164-Q1 (5V)", SO8EP,
       "6": "PG_5V", "7": "BST_5V", "8": "SW_5V", "9": "GND"},
      "LM5164QDDARQ1", "100V synchronous buck, ultra-low Iq")
 R(pw, "100k", "+VBAT", "EN_5V", note="Enable tied to VIN (LM74700 already gates on UVLO)")
-R(pw, "100k", "RON_5V", "GND", note="On-time set: target ~400kHz at 14V in -- trim per datasheet Eq.")
-C(pw, "100nF 16V", "BST_5V", "SW_5V", note="Bootstrap")
+R(pw, "31.6k", "RON_5V", "GND",
+  note="RON = 5.0V x 2500 / 400kHz (Eq 12) -> 396kHz; tON = 237ns at the "
+       "53.3V clamp, comfortably above the 50ns minimum")
+C(pw, "2.2nF 50V", "BST_5V", "SW_5V",
+  note="Bootstrap: datasheet mandates exactly 2.2nF X7R -- a larger value "
+       "overstresses the internal VCC regulator and damages the device")
 part(pw, "L", "Device:L", "33uH 1.5A", "Inductor_SMD:L_7.3x7.3_H4.5",
      {"1": "SW_5V", "2": "+5V"}, "Coilcraft XAL7030-333", "Shielded, Isat > 2A")
 R(pw, "100k", "+5V", "FB_5V", note="FB upper: 1.2V ref -> 5.00V")
 R(pw, "31.6k", "FB_5V", "GND", note="FB lower")
+# Type-3 ripple injection (datasheet Table 6-1): the all-ceramic output has no
+# ESR ripple for the COT comparator, so a SW-node RC ramp is AC-coupled into
+# FB. Sized for ~20mV at FB with VIN = 14V nominal, per TI's design example.
+R(pw, "121k", "SW_5V", "RAMP_5V", note="Ripple-injection ramp resistor RA")
+C(pw, "3.3nF 50V", "RAMP_5V", "+5V", note="Ramp capacitor CA")
+C(pw, "270pF 50V", "RAMP_5V", "FB_5V", note="Ramp coupling capacitor CB")
 C(pw, "22uF 16V", "+5V", "GND", fp=C1206)
 C(pw, "22uF 16V", "+5V", "GND", fp=C1206)
 C(pw, "100nF 16V", "+5V", "GND")
@@ -421,16 +434,27 @@ part(pw, "U", "Regulator_Switching:LM5164DDA", "LM5164-Q1 (3V3)", SO8EP,
      "LM5164QDDARQ1", "Second buck straight off the battery: a shorted 5V "
      "sensor harness cannot brown out the MCU")
 R(pw, "100k", "+VBAT", "EN_3V3")
-R(pw, "100k", "RON_3V3", "GND", note="On-time set: target ~400kHz at 14V in")
-C(pw, "100nF 16V", "BST_3V3", "SW_3V3")
+R(pw, "20.5k", "RON_3V3", "GND",
+  note="RON = 3.3V x 2500 / 400kHz (Eq 12) -> 402kHz; tON = 154ns at the "
+       "53.3V clamp, above the 50ns minimum")
+C(pw, "2.2nF 50V", "BST_3V3", "SW_3V3",
+  note="Bootstrap: datasheet-mandated 2.2nF X7R, do not increase")
 part(pw, "L", "Device:L", "22uH 1.5A", "Inductor_SMD:L_7.3x7.3_H4.5",
      {"1": "SW_3V3", "2": "+3V3"}, "Coilcraft XAL7030-223")
 R(pw, "100k", "+3V3", "FB_3V3", note="FB upper: 1.2V ref -> 3.28V")
 R(pw, "57.6k", "FB_3V3", "GND", note="FB lower")
+R(pw, "95.3k", "SW_3V3", "RAMP_3V3", note="Ripple-injection ramp resistor RA")
+C(pw, "3.3nF 50V", "RAMP_3V3", "+3V3", note="Ramp capacitor CA")
+C(pw, "270pF 50V", "RAMP_3V3", "FB_3V3", note="Ramp coupling capacitor CB")
 C(pw, "22uF 6.3V", "+3V3", "GND", fp=C1206)
 C(pw, "22uF 6.3V", "+3V3", "GND", fp=C1206)
 C(pw, "100nF 16V", "+3V3", "GND")
 R(pw, "100k", "PG_3V3", "+3V3")
+part(pw, "D", "Device:D_Zener", "3.6V 300mW", "Diode_SMD:D_SOD-323",
+     {"1": "+3V3", "2": "GND"}, "onsemi MM3Z3V6T1G",
+     "Rail clamp: an analog input shorted to battery back-feeds ~1.6mA "
+     "through its BAT54S into +3V3; with the MCU asleep the rail would "
+     "otherwise float above the ESP32's 3.6V absolute maximum")
 
 # 5V sensor excitation, fused separately from the board 5V
 part(pw, "PF", "Device:Polyfuse", "0.2A hold / 0.4A trip", "Resistor_SMD:R_1206_3216Metric",
