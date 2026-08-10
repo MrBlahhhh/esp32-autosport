@@ -52,7 +52,7 @@ Qty (1 board),Qty (10 boards),References,Value,Footprint,Manufacturer part numbe
 1,10,L3,51uH CMC,Inductor_SMD:L_CommonMode_Wuerth_WE-SL2,Wurth 744232222,Common-mode choke on the bus side
 1,10,PF1,0.2A hold / 0.4A trip,Resistor_SMD:R_1206_3216Metric,Bourns MF-MSMF020,"Resettable: a shorted sensor wire trips this, not the board"
 1,10,PF2,0.5A hold,Resistor_SMD:R_1206_3216Metric,Bourns MF-MSMF050,
-1,10,Q1,100V 4.3mOhm N-ch,Package_TO_SOT_SMD:TO-252-3_TabPin2,Nexperia PSMN4R3-100BSE,"Source to battery, drain to load: body diode blocks reverse polarity"
+1,10,Q1,100V 6.8mOhm N-ch,Package_TO_SOT_SMD:TO-252-3_TabPin2,Infineon IPD068N10N3G,"Source to battery, drain to load: body diode blocks reverse polarity. LCSC C88066; the previously specified PSMN4R3-100BSE does not exist"
 1,10,Q2,-20V 2.3A P-ch,Package_TO_SOT_SMD:SOT-23,DMG2301L,High-side switch so firmware can power-cycle a wedged card
 1,10,Q3,60V 300mA N-ch,Package_TO_SOT_SMD:SOT-23,2N7002,Level shift for the P-ch gate
 10,100,R1 R11 R14 R24 R26 R3 R5 R62 R8 R9,100k,Resistor_SMD:R_0805_2012Metric,,UVLO upper leg
@@ -77,9 +77,9 @@ Qty (1 board),Qty (10 boards),References,Value,Footprint,Manufacturer part numbe
 1,10,SW1,RESET,Button_Switch_SMD:SW_SPST_TL3342,,
 1,10,SW2,BOOT,Button_Switch_SMD:SW_SPST_TL3342,,
 1,10,U1,LM74700-Q1,Package_TO_SOT_SMD:SOT-23-6,LM74700QDBVRQ1,Ideal-diode controller; blocks reverse battery via Q1
-1,10,U2,LM5164-Q1 (5V),Package_SO:SOIC-8-1EP_3.9x4.9mm_P1.27mm_EP2.95x4.9mm_Mask2.71x3.4mm_ThermalVias,LM5164QDDARQ1,"100V synchronous buck, ultra-low Iq"
-1,10,U3,LM5164-Q1 (3V3),Package_SO:SOIC-8-1EP_3.9x4.9mm_P1.27mm_EP2.95x4.9mm_Mask2.71x3.4mm_ThermalVias,LM5164QDDARQ1,Second buck straight off the battery: a shorted 5V sensor harness cannot brown out the MCU
+1,10,U2,LM5164 (5V),Package_SO:SOIC-8-1EP_3.9x4.9mm_P1.27mm_EP2.95x4.9mm_Mask2.71x3.4mm_ThermalVias,LM5164DDAR,"100V synchronous buck, ultra-low Iq. Non-automotive variant: LCSC C477928 and DigiKey stock it; the Q1 is scarce"
+1,10,U3,LM5164 (3V3),Package_SO:SOIC-8-1EP_3.9x4.9mm_P1.27mm_EP2.95x4.9mm_Mask2.71x3.4mm_ThermalVias,LM5164DDAR,Second buck straight off the battery: a shorted 5V sensor harness cannot brown out the MCU
 1,10,U4,ESP32-S3-WROOM-1-N16R8,RF_Module:ESP32-S3-WROOM-1,ESP32-S3-WROOM-1-N16R8,16MB flash / 8MB octal PSRAM. Pins 28-30 (IO35/36/37) are consumed by the octal PSRAM and must stay unconnected.
 1,10,U5,USBLC6-2SC6,Package_TO_SOT_SMD:SOT-23-6,USBLC6-2SC6,USB ESD clamp
 1,10,U6,TJA1051T/3,Package_SO:SOIC-8_3.9x4.9mm_P1.27mm,"TJA1051T/3,118","5V bus drive with a 3.3V VIO pin, so no level shifting to the ESP32"
-1,10,U7,ADS1115-Q1,Package_SO:VSSOP-10_3x3mm_P0.5mm,ADS1115QDGSRQ1,16-bit 4-ch I2C ADC for AFR-grade accuracy; ADDR to GND = 0x48
+1,10,U7,ADS1115,Package_SO:VSSOP-10_3x3mm_P0.5mm,ADS1115IDGSR,16-bit 4-ch I2C ADC for AFR-grade accuracy; ADDR to GND = 0x48

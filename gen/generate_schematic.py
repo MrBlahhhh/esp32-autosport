@@ -385,9 +385,10 @@ part(pw, "FB", "Device:L", "600R @ 100MHz 3A", "Inductor_SMD:L_1206_3216Metric",
 part(pw, "U", "Power_Management:LM74700", "LM74700-Q1", SOT236,
      {"1": "VCAP", "2": "GND", "3": "VBAT_UVLO", "4": "+VBAT", "5": "GATE_RB", "6": "VBAT_FB"},
      "LM74700QDBVRQ1", "Ideal-diode controller; blocks reverse battery via Q1")
-part(pw, "Q", "Device:Q_NMOS_GSD", "100V 4.3mOhm N-ch", "Package_TO_SOT_SMD:TO-252-3_TabPin2",
-     {"1": "GATE_RB", "2": "VBAT_FB", "3": "+VBAT"}, "Nexperia PSMN4R3-100BSE",
-     "Source to battery, drain to load: body diode blocks reverse polarity")
+part(pw, "Q", "Device:Q_NMOS_GSD", "100V 6.8mOhm N-ch", "Package_TO_SOT_SMD:TO-252-3_TabPin2",
+     {"1": "GATE_RB", "2": "VBAT_FB", "3": "+VBAT"}, "Infineon IPD068N10N3G",
+     "Source to battery, drain to load: body diode blocks reverse polarity. "
+     "LCSC C88066; the previously specified PSMN4R3-100BSE does not exist")
 C(pw, "1uF 50V", "VCAP", "VBAT_FB", mpn="", note="LM74700 charge-pump reservoir")
 R(pw, "100k", "VBAT_FB", "VBAT_UVLO", note="UVLO upper leg")
 R(pw, "25.5k", "VBAT_UVLO", "GND", note="UVLO lower leg -> board enables at ~5.9V")
@@ -401,10 +402,11 @@ C(pw, "10uF 100V", "+VBAT", "GND", fp=C1206, note="Switcher input bypass")
 C(pw, "100nF 100V", "+VBAT", "GND", note="HF bypass")
 
 # +5V rail
-part(pw, "U", "Regulator_Switching:LM5164DDA", "LM5164-Q1 (5V)", SO8EP,
+part(pw, "U", "Regulator_Switching:LM5164DDA", "LM5164 (5V)", SO8EP,
      {"1": "GND", "2": "+VBAT", "3": "EN_5V", "4": "RON_5V", "5": "FB_5V",
       "6": "PG_5V", "7": "BST_5V", "8": "SW_5V", "9": "GND"},
-     "LM5164QDDARQ1", "100V synchronous buck, ultra-low Iq")
+     "LM5164DDAR", "100V synchronous buck, ultra-low Iq. Non-automotive "
+     "variant: LCSC C477928 and DigiKey stock it; the Q1 is scarce")
 R(pw, "100k", "+VBAT", "EN_5V", note="Enable tied to VIN (LM74700 already gates on UVLO)")
 R(pw, "31.6k", "RON_5V", "GND",
   note="RON = 5.0V x 2500 / 400kHz (Eq 12) -> 396kHz; tON = 237ns at the "
@@ -428,10 +430,10 @@ C(pw, "100nF 16V", "+5V", "GND")
 R(pw, "100k", "PG_5V", "+3V3", note="Power-good pull-up")
 
 # +3V3 rail
-part(pw, "U", "Regulator_Switching:LM5164DDA", "LM5164-Q1 (3V3)", SO8EP,
+part(pw, "U", "Regulator_Switching:LM5164DDA", "LM5164 (3V3)", SO8EP,
      {"1": "GND", "2": "+VBAT", "3": "EN_3V3", "4": "RON_3V3", "5": "FB_3V3",
       "6": "PG_3V3", "7": "BST_3V3", "8": "SW_3V3", "9": "GND"},
-     "LM5164QDDARQ1", "Second buck straight off the battery: a shorted 5V "
+     "LM5164DDAR", "Second buck straight off the battery: a shorted 5V "
      "sensor harness cannot brown out the MCU")
 R(pw, "100k", "+VBAT", "EN_3V3")
 R(pw, "20.5k", "RON_3V3", "GND",
@@ -654,11 +656,11 @@ for n in range(1, 5):
 # conditioned AINx nodes, so firmware chooses per channel: fast-and-rough on
 # the internal ADC, or slow-and-accurate here. Inputs are clamped to +3V3 by
 # the BAT54S pairs, within the ADS1115's VDD+0.3V absolute maximum.
-part(an, "U", "Analog_ADC:ADS1115IDGS", "ADS1115-Q1",
+part(an, "U", "Analog_ADC:ADS1115IDGS", "ADS1115",
      "Package_SO:VSSOP-10_3x3mm_P0.5mm",
      {"1": "GND", "3": "GND", "4": "AIN1", "5": "AIN2", "6": "AIN3",
       "7": "AIN4", "8": "+3V3", "9": "I2C_SDA", "10": "I2C_SCL"},
-     "ADS1115QDGSRQ1",
+     "ADS1115IDGSR",
      "16-bit 4-ch I2C ADC for AFR-grade accuracy; ADDR to GND = 0x48",
      nc=("2",))
 C(an, "100nF 16V", "+3V3", "GND", note="ADS1115 decoupling")

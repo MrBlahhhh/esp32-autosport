@@ -36,8 +36,8 @@ socket and conditioned analog inputs.
 J1.1 ──[F1 2A]──[FB1 ferrite]──┬── LM74700-Q1 + Q1 (ideal diode) ──┬── +VBAT
                                │                                    ├── D1 SMCJ33A clamp
                                │                                    ├── C2 100µF bulk
-                               │                                    ├── U2 LM5164-Q1 ─→ +5V ─[PF1]─→ +5VS (sensors)
-                               │                                    └── U3 LM5164-Q1 ─→ +3V3
+                               │                                    ├── U2 LM5164 ─→ +5V ─[PF1]─→ +5VS (sensors)
+                               │                                    └── U3 LM5164 ─→ +3V3
 ```
 
 ### Reverse-battery protection
@@ -49,7 +49,7 @@ connected backwards the body diode is reverse-biased and the FET is held off.
 Nothing conducts, nothing gets hot, and the fuse does not blow — you can hook it
 up backwards all day.
 
-The forward drop is the FET's I·R (4.3 mΩ × 0.5 A ≈ 2 mV) rather than a diode's
+The forward drop is the FET's I·R (6.8 mΩ × 0.5 A ≈ 3 mV) rather than a diode's
 0.4 V, so nothing is wasted in normal running either.
 
 **Order matters here.** `D1`, the load-dump TVS, sits *after* the blocking FET,
@@ -74,7 +74,7 @@ It does **not** cover unsuppressed load dump (>100 V), which would need a
 higher-energy clamp or a series pre-regulator. Say so if the target vehicle has
 an external-regulator alternator.
 
-Both bucks are LM5164-Q1s rated to **100 V**, so at the 53.3 V clamp level
+Both bucks are LM5164s rated to **100 V**, so at the 53.3 V clamp level
 there is nearly 2× headroom on the switcher inputs — the clamp fires long
 before anything downstream is stressed.
 
@@ -90,7 +90,7 @@ inductor versus 12 V→5 V→3.3 V cascading, and buys two things:
    bay at 85 °C ambient is a thermal problem in a small package. A switcher
    burns almost nothing.
 
-Both parts are the same LM5164-Q1, so it is one line on the BOM in quantity 20
+Both parts are the same LM5164, so it is one line on the BOM in quantity 20
 rather than two different regulators.
 
 ### 5 V sensor excitation
@@ -138,7 +138,7 @@ Every channel lands on **ADC1** (`GPIO1`, `GPIO2`, `GPIO4`, `GPIO5`), which is
 the half of the ESP32-S3 ADC that keeps working while WiFi is active. ADC2 is
 unusable with WiFi up — that constraint drove the pin assignment.
 
-The same four conditioned nodes also feed `U7`, an **ADS1115-Q1** (16-bit
+The same four conditioned nodes also feed `U7`, an **ADS1115** (16-bit
 delta-sigma, on the existing I²C bus at 0x48). The ESP32-S3's internal ADC is
 only good for ±1–2 % even after calibration — ±0.2 AFR on a 0–5 V wideband
 output — so firmware picks per channel: fast-and-rough on the internal ADC, or
@@ -256,7 +256,7 @@ Two more issues surfaced while reading the datasheet, both fixed:
   on 3.3 V), sized per TI's design example for ≈20 mV of ramp at 14 V in.
 
 5. ~~ESP32-S3 ADC linearity~~ — resolved for the AFR use case: `U7`, an
-   onboard ADS1115-Q1 (16-bit, I²C), now shares the four conditioned input
+   onboard ADS1115 (16-bit, I²C), now shares the four conditioned input
    nodes, and the divider resistors are 0.1 % thin-film. See §3.
 
 Still open for a second pair of eyes:
@@ -267,6 +267,27 @@ Still open for a second pair of eyes:
    apply: tight input-cap loops on `U2`/`U3`, `C4` right at the pin, ground
    pour under the ideal-diode block, CAN pair routed as a differential pair
    with the choke close to the connector.
+
+### Sourcing (JLCPCB assembly)
+
+The board is targeted at JLCPCB pick-and-place, so the critical semiconductors
+were checked against the LCSC catalog (2026-08):
+
+| Part | MPN | LCSC # | Notes |
+|---|---|---|---|
+| ESP32 module | ESP32-S3-WROOM-1-N16R8 | C2913202 | In stock |
+| Buck ×2 | LM5164DDAR | C477928 | Non-automotive variant — the Q1 is backordered at DigiKey and nearly dry at Mouser; same silicon, minus AEC-Q100 |
+| Ideal-diode ctrl | LM74700QDBVRQ1 | C2941042 | In stock (~$0.72) |
+| Reverse-batt FET | IPD068N10N3G | C88066 | Replaces PSMN4R3-100BSE, **which does not exist** (nearest real Nexperia part is a D2PAK); DPAK, drops into the same footprint, 6.8 mΩ costs ~3 mV at load |
+| CAN transceiver | TJA1051T/3/1J | C38695 | NXP original, in stock |
+| Precision ADC | ADS1115IDGSR | C37593 | Non-automotive variant — the Q1 needs a manufacturer quote at DigiKey |
+
+Still to pick from the live JLC catalog at layout time (generic, many options):
+the two buck inductors (33 µH / 22 µH shielded molded, ≥ 2 A Isat — Coilcraft
+XAL7030 is the reference part but LCSC stock is thin), the 100 µF 100 V bulk
+electrolytic (Nichicon UCD is the reference), and the 0.1 % thin-film divider
+resistors (commodity at LCSC).
+
 
 ---
 
