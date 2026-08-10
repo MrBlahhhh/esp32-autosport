@@ -1,0 +1,102 @@
+(kicad_sch (version 20230121) (generator eeschema)
+
+  (uuid 3276c6e6-7085-5954-8442-c6cef7eab316)
+
+  (paper "A3")
+
+  (title_block
+    (title "ESP32-S3 CAN + microSD Automotive Logger")
+    (date "")
+    (rev "A")
+    (company "geekopolis")
+    (comment 1 "Root sheet -- see the block sheets below")
+  )
+
+  (lib_symbols
+  )
+
+  (sheet (at 40 30) (size 120 25) (fields_autoplaced)
+    (stroke (width 0.1524) (type solid))
+    (fill (color 0 0 0 0.0000))
+    (uuid d5ac0612-149e-5dcd-b81f-e1865307c832)
+    (property "Sheetname" "Power" (at 40 29.4 0)
+      (effects (font (size 1.27 1.27)) (justify left bottom))
+    )
+    (property "Sheetfile" "power.kicad_sch" (at 40 55.6 0)
+      (effects (font (size 1.27 1.27)) (justify left top))
+    )
+    (instances
+      (project "esp32s3-can-sd-logger"
+        (path "/3276c6e6-7085-5954-8442-c6cef7eab316" (page "2"))
+      )
+    )
+  )
+  (sheet (at 40 75) (size 120 25) (fields_autoplaced)
+    (stroke (width 0.1524) (type solid))
+    (fill (color 0 0 0 0.0000))
+    (uuid a84bed91-088f-5303-a3fb-bbd35a494bf0)
+    (property "Sheetname" "MCU" (at 40 74.4 0)
+      (effects (font (size 1.27 1.27)) (justify left bottom))
+    )
+    (property "Sheetfile" "mcu.kicad_sch" (at 40 100.6 0)
+      (effects (font (size 1.27 1.27)) (justify left top))
+    )
+    (instances
+      (project "esp32s3-can-sd-logger"
+        (path "/3276c6e6-7085-5954-8442-c6cef7eab316" (page "3"))
+      )
+    )
+  )
+  (sheet (at 40 120) (size 120 25) (fields_autoplaced)
+    (stroke (width 0.1524) (type solid))
+    (fill (color 0 0 0 0.0000))
+    (uuid 229b8fda-064c-5815-a4c6-b9c2bb7e623c)
+    (property "Sheetname" "SD Card" (at 40 119.4 0)
+      (effects (font (size 1.27 1.27)) (justify left bottom))
+    )
+    (property "Sheetfile" "sdcard.kicad_sch" (at 40 145.6 0)
+      (effects (font (size 1.27 1.27)) (justify left top))
+    )
+    (instances
+      (project "esp32s3-can-sd-logger"
+        (path "/3276c6e6-7085-5954-8442-c6cef7eab316" (page "4"))
+      )
+    )
+  )
+  (sheet (at 40 165) (size 120 25) (fields_autoplaced)
+    (stroke (width 0.1524) (type solid))
+    (fill (color 0 0 0 0.0000))
+    (uuid de4828a4-9871-500a-b45f-afe12f432271)
+    (property "Sheetname" "CAN" (at 40 164.4 0)
+      (effects (font (size 1.27 1.27)) (justify left bottom))
+    )
+    (property "Sheetfile" "can.kicad_sch" (at 40 190.6 0)
+      (effects (font (size 1.27 1.27)) (justify left top))
+    )
+    (instances
+      (project "esp32s3-can-sd-logger"
+        (path "/3276c6e6-7085-5954-8442-c6cef7eab316" (page "5"))
+      )
+    )
+  )
+  (sheet (at 40 210) (size 120 25) (fields_autoplaced)
+    (stroke (width 0.1524) (type solid))
+    (fill (color 0 0 0 0.0000))
+    (uuid 61f1fdfe-4c14-50c2-a034-e9770d48c32f)
+    (property "Sheetname" "Analog Inputs" (at 40 209.4 0)
+      (effects (font (size 1.27 1.27)) (justify left bottom))
+    )
+    (property "Sheetfile" "analog.kicad_sch" (at 40 235.6 0)
+      (effects (font (size 1.27 1.27)) (justify left top))
+    )
+    (instances
+      (project "esp32s3-can-sd-logger"
+        (path "/3276c6e6-7085-5954-8442-c6cef7eab316" (page "6"))
+      )
+    )
+  )
+
+  (sheet_instances
+    (path "/" (page "1"))
+  )
+)
