@@ -325,7 +325,13 @@ resistors (commodity at LCSC).
 | `plots/schematic.pdf` | Rendered schematic, all six sheets |
 | `gen/generate_schematic.py` | Generator — edit this, not the `.kicad_sch` files |
 | `gen/validate.py` | Verifies the output with KiCad itself |
+| `gen/build_board.py` | One-command board build: places, stitches, routes, verifies |
 | `gen/generate_pcb.py` | Board generator — run with KiCad's bundled Python |
+| `gen/stitch_planes.py` | Via from every GND / +3V3 pad to its plane |
+| `gen/export_dsn.py` | Specctra export with the inner layers locked as planes |
+| `gen/import_ses.py` | Imports the router's session and refills the pours |
+| `gen/finish_routing.py` | Ties duplicated connector pins; reports leftovers |
+| `gen/export_fab.py` | Gerbers, drill, JLC assembly BOM and position files |
 | `gen/route_bucks.py` | Places buck islands + routes SW/VIN critical copper |
 | `esp32s3-can-sd-logger.kicad_pcb` | Generated 4-layer board, placed, partially routed |
 | `footprints/esp32autosport.pretty` | Project footprints (TDK ACT45B CAN choke) |
@@ -384,48 +390,67 @@ but the next generator run will overwrite them.
 
 ---
 
-## 9. Board layout
+## 9. Board layout and routing
 
-The board is generated too: `gen/generate_pcb.py` (run with KiCad's bundled
-Python) reads the same part/net tables as the schematic generator, loads real
-footprints, assigns every pad its net, and places parts into functional zones.
-84 x 72 mm, 4 layers (F.Cu / GND / +3V3 / B.Cu — inner planes are drawn as
-zones, press `B` in KiCad to fill), JLCPCB JLC04161H-7628 stackup assumed,
-0.2 mm minimum drill to match the LM5164 thermal vias.
+The board is generated the same way the schematic is. One command does the
+whole chain:
 
-`gen/route_bucks.py` then stacks the two LM5164 islands on the left
-(5 V upper / 3V3 lower, clear of the microSD) and lays **SW + VIN** copper only.
-Bootstrap, VOUT, FB/ramp, and everything else is still ratsnest.
+```sh
+python gen/build_board.py --freerouting freerouting.jar
+```
 
-Placement logic, all encoded in the generator:
+| Stage | Script | What it does |
+|---|---|---|
+| 1 | `generate_pcb.py` | Places every part, draws the outline, planes, keepouts |
+| 2 | `route_bucks.py` | Hand-shaped copper for the two buck power loops |
+| 3 | `stitch_planes.py` | A via from every GND / +3V3 pad down to its plane |
+| 4 | `export_dsn.py` | Specctra export, **In1/In2 marked as power planes** |
+| 5 | freerouting | Routes the remaining signals on F.Cu / B.Cu |
+| 6 | `import_ses.py` | Brings the routes back, refills the pours |
+| 7 | `finish_routing.py` | Ties duplicated connector pins, reports leftovers |
 
-- **Left edge:** sensor harness (`J10`) and power/CAN harness (`J1`) — one
+84 x 74 mm, 4 layers: **F.Cu / GND / +3V3 / B.Cu**, JLCPCB JLC04161H-7628
+stackup, 0.2 mm minimum drill (the LM5164 thermal vias), 0.5 mm copper-to-edge
+enforced by a rule-area band around the perimeter.
+
+Two things in that pipeline are worth knowing, because both were learned the
+hard way:
+
+**The inner layers must be declared `power` in the DSN.** KiCad exports every
+copper layer as `signal`, so an autorouter cheerfully runs traces straight
+through what are meant to be solid pours -- the first attempt here had `IO45`
+and `SPI_MOSI` crossing the middle of the +3V3 plane, which fragmented it and
+orphaned everything that depended on it. `export_dsn.py` rewrites those two
+layer declarations, and routing then stays on the outer layers where it
+belongs.
+
+**Plane pads are stitched before routing, not after.** A pad on GND or +3V3
+does not want a routed track, it wants a via next to it; doing all 117 of them
+up front means the router treats them as obstacles and has only signals left to
+solve. `stitch_planes.py` places each via with real point-to-rectangle and
+point-to-segment distance checks -- bounding boxes are far too pessimistic in a
+dense field and refuse room that is really there.
+
+### Placement
+
+- **Left edge:** sensor harness (`J10`) and power/CAN harness (`J1`) -- one
   wiring direction toward the car.
 - **Top:** four identical analog channel columns with their solder jumpers
-  facing up for probing; ESP32 module top-center with the **antenna
-  overhanging the board edge** (its keepout area falls entirely off-board);
-  Spare-IO header left of it.
-- **Right edge:** USB-C and microSD for bench access, then RESET/BOOT,
-  status LEDs, and the WS2812 header.
-- **Bottom band:** battery front end beside `J1`, stacked bucks, then
-  UART0 / I2C / rail / SPI headers along the bottom edge.
+  facing up for probing; ESP32 module top-centre with the **antenna
+  overhanging the board edge**, so the module's own RF keepout falls entirely
+  off-board; Spare-IO and SPI headers to its left.
+- **Right edge:** USB-C and microSD for bench access, then RESET/BOOT and the
+  status LEDs.
+- **Middle:** the two stacked buck islands, each with its input caps at the
+  VIN pin and its RON/FB/ramp network alongside.
+- **Bottom edge:** battery front end beside `J1`, and the UART0 / I2C / rail /
+  WS2812 headers along the edge.
 
-Do **not** trust an older “DRC-clean / zero violations” claim for the current
-board: silk is noisy after auto-pack, and regenerating the PCB wipes tracks
-until `route_bucks.py` is re-run. Copper DRC for the scripted SW/VIN segments
-still needs a visual pass in KiCad after plane fill (`B`).
-
-Routing order to finish:
-
-1. Buck loops — bootstrap (`C5`/`C11`), VOUT to output caps, FB/ramp (hand-route;
-   scripted Manhattan kept shorting through the LM5164 EP)
-2. SDMMC (short, roughly length-matched)
-3. USB differential pair
-4. CAN pair + choke close to `J1`
-5. SPI / WS2812 / headers
-6. Analog last; stitching vias around the planes
-
----
+The USB-C receptacle sits ~2.5 mm inboard of flush rather than overhanging.
+Its A/B duplicate pins (D+ on A6 and B6, D- on A7 and B7) have to be tied
+together on copper for a reversible cable, and at 0.5 mm pitch that needs a
+via channel between the pad row and the edge keepout. The case opening sets
+plug access anyway.
 
 ## 10. Handoff — remaining work
 
@@ -448,6 +473,7 @@ and the +VBAT feed.  The board is 84 x 74 mm.
    python gen/generate_schematic.py && python gen/validate.py
    "C:\Program Files\KiCad\9.0\bin\python.exe" gen/generate_pcb.py
    "C:\Program Files\KiCad\9.0\bin\python.exe" gen/route_bucks.py
+   "C:\Program Files\KiCad\9.0\bin\python.exe" gen/finish_routing.py
    ```
 2. Hand-route the remaining nets in the order in §9 (SDMMC, USB pair, CAN
    pair, analog last); fill zones (`B`); iterate DRC.

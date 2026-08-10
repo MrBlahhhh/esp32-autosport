@@ -1,0 +1,5 @@
+freerouting.jar
+fab/board.dsn
+fab/board.ses
+gen/__pycache__/
+logs/

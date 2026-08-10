@@ -73,7 +73,12 @@ FIXED = {
     "JST B8B-PH-K-S(LF)(SN)":   (5.0, 18.0, 270),   # sensor harness, left edge
     "JST B4B-PH-K-S(LF)(SN)":   (5.0, 50.0, 270),   # power/CAN harness
     "ESP32-S3-WROOM-1-N16R8":   (52.0, 6.8, 0),     # antenna overhangs top edge
-    "HRO TYPE-C-31-M-12":       (78.5, 8.0, 270),   # right edge, opening out
+    # 2.5 mm inboard of flush.  The A/B duplicate pins (D+ on A6/B6, D- on
+    # A7/B7) have to be tied together on copper, and that needs two columns
+    # of vias in the channel between the 0.5 mm-pitch pad row and the edge
+    # keepout -- about 2.4 mm.  The mouth ends ~2 mm inside the outline; the
+    # case opening sets plug access anyway.
+    "HRO TYPE-C-31-M-12":       (76.0, 8.0, 270),   # right edge, opening out
     "Hirose DM3D-SF":           (75.0, 41.0, 270),  # right edge, card out
     "value:Spare IO":           (10.0, 3.0, 90),    # top edge
     "value:SPI":                (21.7, 3.0, 90),    # top edge
@@ -146,7 +151,7 @@ ZONES = [
     ("ch4",       (34.6,  7.0,  7.6, 24.0), lambda p, n, s: n & {"AIN4_A", "AIN4_PU", "AIN4_R1", "AIN4_R2", "AIN4_IN", "AIN4"}),
     ("ws2812",    (59.0, 58.3, 14.2,  3.8), lambda p, n, s: n & {"LED_DIN_MCU", "LED_DIN_A", "LED_DIN", "LED_5V"}),
     ("ledr",      (78.5, 48.7,  5.0,  4.6), lambda p, n, s: n & {"LED1_A", "LED2_A"}),
-    ("usb",       (62.0, 13.5, 14.0,  9.5), lambda p, n, s: n & {"USB_DP_CON", "USB_DM_CON", "USB_CC1", "USB_CC2", "VBUS_IN", "VBUS", "USB_DP", "USB_DM"}),
+    ("usb",       (62.0, 14.2, 13.0,  8.8), lambda p, n, s: n & {"USB_DP_CON", "USB_DM_CON", "USB_CC1", "USB_CC2", "VBUS_IN", "VBUS", "USB_DP", "USB_DM"}),
     ("sdpwr",     (59.0, 49.3, 11.0,  8.5), lambda p, n, s: n & {"SD_PG", "SD_EN_G", "SD_PWR_EN"}),
     ("sd",        (51.0, 22.4, 11.5, 12.4), lambda p, n, s: s == "SD Card"),
     ("can",       ( 9.5, 28.2, 21.0, 15.0), lambda p, n, s: s == "CAN"),
@@ -255,6 +260,20 @@ def main():
                 net = p["pins"].get(pad.GetNumber())
                 if net is not None:
                     pad.SetNet(nets[net])
+            # Solid plane connections rather than thermal spokes for the
+            # LM5164 exposed pads (they are the part's heatsink) and for
+            # through-hole pads on a plane net, whose spokes get starved by
+            # the surrounding via field.  The board is machine-assembled, so
+            # the easier-to-hand-solder thermal relief buys nothing.
+            full = getattr(pcbnew, "ZONE_CONNECTION_FULL", None)
+            if full is not None:
+                for pad in fp.Pads():
+                    thru = pad.GetAttribute() == pcbnew.PAD_ATTRIB_PTH
+                    ep = p["value"].startswith("LM5164") and pad.GetNumber() == "9"
+                    if ep or (thru and p["pins"].get(pad.GetNumber()) in
+                              ("GND", "+3V3")):
+                        pad.SetLocalZoneConnection(full)
+
             board.Add(fp)
 
             if p["footprint"].startswith("MountingHole"):
@@ -340,6 +359,25 @@ def main():
                 overflow = True
         used_h = (y + row_h) - zy
         report.append((name, len(parts), used_h, zh, overflow))
+
+    # --- perimeter keepout -------------------------------------------------
+    # Copper-to-edge clearance is 0.5 mm; an autorouter reading the Specctra
+    # export does not know that rule, so the band is made an explicit rule
+    # area.  It also pulls the plane pours back from the routed edge.
+    band = 0.6
+    for x1, y1, x2, y2 in ((0, 0, W, band), (0, H - band, W, H),
+                           (0, 0, band, H), (W - band, 0, W, H)):
+        ka = pcbnew.ZONE(board)
+        ka.SetIsRuleArea(True)
+        ka.SetDoNotAllowCopperPour(True)
+        ka.SetDoNotAllowTracks(True)
+        ka.SetDoNotAllowVias(True)
+        ka.SetLayerSet(pcbnew.LSET.AllCuMask(4))
+        olk = ka.Outline()
+        olk.NewOutline()
+        for x, y in ((x1, y1), (x2, y1), (x2, y2), (x1, y2)):
+            olk.Append(mm(x), mm(y))
+        board.Add(ka)
 
     # --- inner-layer planes ------------------------------------------------
     def plane(layer, netname):
