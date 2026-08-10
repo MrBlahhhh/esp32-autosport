@@ -11,6 +11,7 @@ Exits non-zero on any discrepancy.  Requires kicad-cli.
 Usage: python3 gen/validate.py
 """
 
+import glob
 import os
 import re
 import shutil
@@ -55,10 +56,29 @@ def kids(node, tag):
     return [c for c in node if isinstance(c, list) and c and c[0] == tag]
 
 
+def find_kicad_cli():
+    """kicad-cli on PATH, or in the usual install location per platform.
+
+    The Windows installer does not add KiCad to PATH, so this looks there too.
+    """
+    found = shutil.which("kicad-cli")
+    if found:
+        return found
+    candidates = []
+    for pat in (r"C:\Program Files\KiCad\*\bin\kicad-cli.exe",
+                r"C:\Program Files (x86)\KiCad\*\bin\kicad-cli.exe",
+                "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli",
+                "/usr/bin/kicad-cli", "/usr/local/bin/kicad-cli"):
+        candidates.extend(glob.glob(pat))
+    return sorted(candidates)[-1] if candidates else None
+
+
+CLI = None  # resolved in main()
+
+
 def has_erc():
     """kicad-cli gained `sch erc` in 8.0; 7.x only has `sch export`."""
-    res = subprocess.run(["kicad-cli", "sch", "--help"],
-                         capture_output=True, text=True)
+    res = subprocess.run([CLI, "sch", "--help"], capture_output=True, text=True)
     return "erc" in (res.stdout + res.stderr)
 
 
@@ -66,7 +86,7 @@ def run_erc(sch, workdir):
     """Return (violation_list, error_string). Empty list + '' means clean."""
     out = os.path.join(workdir, "erc.json")
     res = subprocess.run(
-        ["kicad-cli", "sch", "erc", "--output", out, "--format", "json",
+        [CLI, "sch", "erc", "--output", out, "--format", "json",
          "--severity-error", "--severity-warning", sch],
         capture_output=True, text=True)
     if not os.path.exists(out):
@@ -97,7 +117,7 @@ def run_erc(sch, workdir):
 def kicad_netlist(sch, workdir):
     out = os.path.join(workdir, "n.net")
     res = subprocess.run(
-        ["kicad-cli", "sch", "export", "netlist", "--output", out, sch],
+        [CLI, "sch", "export", "netlist", "--output", out, sch],
         capture_output=True, text=True)
     if res.returncode != 0:
         return None, (res.stdout + res.stderr).strip()
@@ -105,6 +125,17 @@ def kicad_netlist(sch, workdir):
 
 
 def main():
+    global CLI
+    CLI = find_kicad_cli()
+    if CLI is None:
+        print("kicad-cli not found. Install KiCad, or add its bin directory to\n"
+              "PATH. Typical locations:\n"
+              r"  Windows: C:\Program Files\KiCad\9.0\bin" "\n"
+              "  macOS:   /Applications/KiCad/KiCad.app/Contents/MacOS\n"
+              "  Linux:   /usr/bin")
+        return 2
+    print("kicad-cli   : %s" % CLI)
+
     failures = []
     tmp = tempfile.mkdtemp()
     try:

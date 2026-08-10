@@ -66,6 +66,33 @@ SCH_FORMAT_VERSION = "20230121"          # KiCad 7.0
 VALIDATED_SYMBOL_VERSION = "20220914"    # KiCad 7.0 symbol libraries
 
 
+def find_symbol_dir():
+    """Locate the stock KiCad symbol libraries on Windows, macOS or Linux."""
+    import glob as _glob
+
+    for var in ("KICAD9_SYMBOL_DIR", "KICAD8_SYMBOL_DIR", "KICAD7_SYMBOL_DIR",
+                "KICAD6_SYMBOL_DIR"):
+        path = os.environ.get(var)
+        if path and os.path.isdir(path):
+            return path
+
+    patterns = [
+        r"C:\Program Files\KiCad\*\share\kicad\symbols",
+        r"C:\Program Files (x86)\KiCad\*\share\kicad\symbols",
+        "/Applications/KiCad/KiCad.app/Contents/SharedSupport/symbols",
+        "/usr/share/kicad/symbols",
+        "/usr/local/share/kicad/symbols",
+        os.path.expanduser("~/.local/share/kicad/*/symbols"),
+    ]
+    found = []
+    for pat in patterns:
+        found.extend(p for p in _glob.glob(pat) if os.path.isdir(p))
+    if found:
+        # Highest KiCad version wins when several are installed.
+        return sorted(found)[-1]
+    return None
+
+
 class SymbolLibs:
     """Reads the installed KiCad symbol libraries."""
 
@@ -900,9 +927,24 @@ ROOT_UUID = det_uuid("root:" + PROJECT)
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--symbol-dir", default="/usr/share/kicad/symbols")
+    ap.add_argument("--symbol-dir", default=None,
+                    help="KiCad symbol library directory "
+                         "(auto-detected if omitted)")
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), ".."))
     args = ap.parse_args()
+
+    if args.symbol_dir is None:
+        args.symbol_dir = find_symbol_dir()
+        if args.symbol_dir is None:
+            raise SystemExit(
+                "Could not find the KiCad symbol libraries.\n"
+                "Pass --symbol-dir explicitly, e.g.\n"
+                '  Windows: --symbol-dir "C:\\Program Files\\KiCad\\9.0'
+                '\\share\\kicad\\symbols"\n'
+                "  macOS:   --symbol-dir /Applications/KiCad/KiCad.app"
+                "/Contents/SharedSupport/symbols\n"
+                "  Linux:   --symbol-dir /usr/share/kicad/symbols")
+        print("symbol libs : %s" % args.symbol_dir)
 
     libs = SymbolLibs(args.symbol_dir)
     libs.symbol("Device:R")  # force one library load so the format is known
