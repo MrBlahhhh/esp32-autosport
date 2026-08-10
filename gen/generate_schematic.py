@@ -59,6 +59,13 @@ def children(node, tag):
     return [c for c in node if isinstance(c, list) and c and c[0] == tag]
 
 
+# The schematic format this generator emits, and the symbol-library format its
+# embedded definitions were validated against.  KiCad opens older schematics and
+# upgrades them on load, so emitting the 7.0 format is safe on 7, 8 and 9 alike.
+SCH_FORMAT_VERSION = "20230121"          # KiCad 7.0
+VALIDATED_SYMBOL_VERSION = "20220914"    # KiCad 7.0 symbol libraries
+
+
 class SymbolLibs:
     """Reads the installed KiCad symbol libraries."""
 
@@ -66,6 +73,7 @@ class SymbolLibs:
         self.symbol_dir = symbol_dir
         self._parsed = {}
         self._raw = {}
+        self.lib_version = None
 
     def _load(self, lib):
         if lib in self._parsed:
@@ -75,6 +83,9 @@ class SymbolLibs:
             raise SystemExit("symbol library not found: " + path)
         text = open(path, encoding="utf-8").read()
         root = parse_sexp(text)[0]
+        ver = children(root, "version")
+        if ver and self.lib_version is None:
+            self.lib_version = unquote(ver[0][1])
         self._parsed[lib] = {unquote(s[1]): s for s in children(root, "symbol")}
 
         # Byte-exact source text for each top-level symbol, so the definitions
@@ -685,7 +696,7 @@ def emit_sheet(libs, sh, sheet_uuid, page):
     lib_block = [libs.raw(lib_id) for lib_id in used]
 
     out = [
-        "(kicad_sch (version 20230121) (generator eeschema)",
+        "(kicad_sch (version %s) (generator eeschema)" % SCH_FORMAT_VERSION,
         "",
         "  (uuid %s)" % sheet_uuid,
         "",
@@ -748,7 +759,7 @@ def emit_sheet(libs, sh, sheet_uuid, page):
 
 def emit_root(sheet_uuids):
     out = [
-        "(kicad_sch (version 20230121) (generator eeschema)",
+        "(kicad_sch (version %s) (generator eeschema)" % SCH_FORMAT_VERSION,
         "",
         "  (uuid %s)" % ROOT_UUID,
         "",
@@ -894,6 +905,16 @@ def main():
     args = ap.parse_args()
 
     libs = SymbolLibs(args.symbol_dir)
+    libs.symbol("Device:R")  # force one library load so the format is known
+    if libs.lib_version != VALIDATED_SYMBOL_VERSION:
+        print(
+            "WARNING: symbol libraries in %s are format %s, but the embedded\n"
+            "         definitions were validated against %s (KiCad 7.0).\n"
+            "         Newer libraries may use syntax the emitted schematic format\n"
+            "         (%s) does not accept. Run gen/validate.py before trusting the\n"
+            "         output, or point --symbol-dir at a KiCad 7 library set."
+            % (args.symbol_dir, libs.lib_version, VALIDATED_SYMBOL_VERSION,
+               SCH_FORMAT_VERSION))
     assign_refs()
     place(libs)
 

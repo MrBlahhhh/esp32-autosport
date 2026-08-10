@@ -55,6 +55,45 @@ def kids(node, tag):
     return [c for c in node if isinstance(c, list) and c and c[0] == tag]
 
 
+def has_erc():
+    """kicad-cli gained `sch erc` in 8.0; 7.x only has `sch export`."""
+    res = subprocess.run(["kicad-cli", "sch", "--help"],
+                         capture_output=True, text=True)
+    return "erc" in (res.stdout + res.stderr)
+
+
+def run_erc(sch, workdir):
+    """Return (violation_list, error_string). Empty list + '' means clean."""
+    out = os.path.join(workdir, "erc.json")
+    res = subprocess.run(
+        ["kicad-cli", "sch", "erc", "--output", out, "--format", "json",
+         "--severity-error", "--severity-warning", sch],
+        capture_output=True, text=True)
+    if not os.path.exists(out):
+        return None, (res.stdout + res.stderr).strip() or "no ERC report produced"
+    try:
+        import json
+        report = json.load(open(out, encoding="utf-8"))
+    except Exception as exc:                       # noqa: BLE001
+        return None, "could not parse ERC report: %s" % exc
+
+    found = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            for key, val in node.items():
+                if key == "violations" and isinstance(val, list):
+                    found.extend(val)
+                else:
+                    walk(val)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(report)
+    return found, ""
+
+
 def kicad_netlist(sch, workdir):
     out = os.path.join(workdir, "n.net")
     res = subprocess.run(
@@ -132,6 +171,23 @@ def main():
 
         print("\n  components in netlist : %d" % n_comp)
         print("  nets compared         : %d" % len(want))
+
+        # 4. ERC, where the installed kicad-cli can do it (8.0 and later).
+        if not has_erc():
+            print("  erc                   : SKIPPED — this kicad-cli has no "
+                  "`sch erc` subcommand (added in 8.0). Run ERC in the GUI.")
+        else:
+            violations, err = run_erc(ROOT, tmp)
+            if violations is None:
+                failures.append("ERC could not be run: " + err)
+            elif violations:
+                print("  erc                   : %d violation(s)" % len(violations))
+                for v in violations[:40]:
+                    sev = v.get("severity", "?")
+                    desc = v.get("description") or v.get("type", "?")
+                    failures.append("ERC %s: %s" % (sev, desc))
+            else:
+                print("  erc                   : clean")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

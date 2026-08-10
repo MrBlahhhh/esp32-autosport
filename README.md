@@ -258,6 +258,28 @@ Honest list of what a second pair of eyes should check:
 | `gen/generate_schematic.py` | Generator — edit this, not the `.kicad_sch` files |
 | `gen/validate.py` | Verifies the output with KiCad itself |
 
+### KiCad version
+
+The committed files are **KiCad 7.0 schematic format** (`version 20230121`).
+KiCad 8 and 9 open them directly and upgrade the format on load, so nothing
+needs converting — just open `esp32s3-can-sd-logger.kicad_pro`. Note that once
+KiCad 9 saves, the files are rewritten in 9's format; re-running the generator
+would put them back to 7's.
+
+### Running ERC
+
+`kicad-cli` gained an `erc` subcommand in 8.0. On KiCad 8 or 9, `validate.py`
+picks it up automatically and reports violations as failures. To run it alone:
+
+```sh
+kicad-cli sch erc --output erc.json --format json \
+    --severity-error --severity-warning esp32s3-can-sd-logger.kicad_sch
+```
+
+On KiCad 7 the check is skipped with a notice, since the subcommand does not
+exist there — that was the situation when this schematic was first validated,
+so **ERC has not yet been run on this design**. It is the first thing to do.
+
 ### Regenerating
 
 The schematic is generated. The netlist tables in `gen/generate_schematic.py`
@@ -265,18 +287,23 @@ are authoritative; symbol geometry and **all pin numbering** are pulled from the
 installed KiCad libraries, so no pin number is ever hand-typed.
 
 ```sh
-sudo apt-get install kicad kicad-symbols     # provides kicad-cli and the libraries
 python3 gen/generate_schematic.py
 python3 gen/validate.py
 ```
 
 `validate.py` loads every sheet through KiCad, exports the hierarchy's netlist,
-and asserts that KiCad's own extracted connectivity matches `netlist.txt`
-node-for-node. It currently passes on 102 nets / 153 component instances.
+asserts that KiCad's own extracted connectivity matches `netlist.txt`
+node-for-node, and runs ERC where available. It currently passes on 102 nets /
+153 component instances.
 
-Note that `kicad-cli` 7 has no ERC subcommand (added in 8), so the netlist
-comparison above is the electrical check that was actually run. Open the project
-in KiCad and run ERC before committing to a layout.
+One caveat if you regenerate on KiCad 8 or 9: the generator embeds symbol
+definitions copied verbatim from the installed libraries, and those were
+validated against the KiCad 7 library format (`20220914`). Newer libraries may
+use syntax the emitted schematic format does not accept, so the generator prints
+a warning when it detects a different library generation. Run `validate.py`
+afterwards — it will catch a sheet that fails to load. If it does fail, point
+`--symbol-dir` at a KiCad 7 library set, or bump `SCH_FORMAT_VERSION` in the
+generator to match your KiCad and re-validate.
 
 Editing the `.kicad_sch` files by hand is fine — they are ordinary KiCad files —
 but the next generator run will overwrite them.
