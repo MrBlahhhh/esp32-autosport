@@ -40,12 +40,14 @@ PROJ = os.path.abspath(os.path.join(HERE, ".."))
 sys.path.insert(0, HERE)
 
 from stitch_planes import collect, fits, seg_fits          # noqa: E402
+import netclasses                                          # noqa: E402
 
 BOARD_PATH = os.path.join(PROJ, "esp32s3-can-sd-logger.kicad_pcb")
+SIZES = netclasses.Sizes()
 
 PAD_RE = re.compile(r"^(?:PTH )?[Pp]ad (\S+) \[([^\]]*)\] of (\S+)")
 NET_RE = r"\[([^\]]+)\]"
-TIE_VIA, TIE_DRILL, TIE_W = 0.5, 0.25, 0.2
+TIE_VIA, TIE_DRILL, TIE_W = 0.5, 0.25, 0.2      # floor; per-net sizes win
 
 
 def mm(v):
@@ -77,11 +79,11 @@ def drc(board_path):
     return rep.get("violations", []), rep.get("unconnected_items", [])
 
 
-def add_via(board, x, y, netinfo):
+def add_via(board, x, y, netinfo, dia=TIE_VIA, drill=TIE_DRILL):
     v = PCB_VIA(board)
     v.SetPosition(VECTOR2I(int(mm(x)), int(mm(y))))
-    v.SetDrill(mm(TIE_DRILL))
-    v.SetWidth(mm(TIE_VIA))
+    v.SetDrill(mm(drill))
+    v.SetWidth(mm(dia))
     v.SetViaType(VIATYPE_THROUGH)
     v.SetNet(netinfo)
     try:
@@ -92,11 +94,11 @@ def add_via(board, x, y, netinfo):
     return v
 
 
-def add_track(board, netinfo, p1, p2, layer):
+def add_track(board, netinfo, p1, p2, layer, width=TIE_W):
     t = PCB_TRACK(board)
     t.SetStart(VECTOR2I(int(mm(p1[0])), int(mm(p1[1]))))
     t.SetEnd(VECTOR2I(int(mm(p2[0])), int(mm(p2[1]))))
-    t.SetWidth(mm(TIE_W))
+    t.SetWidth(mm(width))
     t.SetLayer(layer)
     t.SetNet(netinfo)
     board.Add(t)
@@ -133,6 +135,8 @@ def tie_duplicates(board, unconnected):
         keys = sorted(spots)
         a = spots[keys[0]]
         netinfo = a.GetNet()
+        tie_w = SIZES.track(net)
+        tie_via, tie_drill = SIZES.via(net)
         (ax, ay), (bx, by) = keys[0], keys[-1]
         half = ToMM(a.GetBoundingBox().GetWidth()) / 2.0
         placed = False
@@ -140,21 +144,21 @@ def tie_duplicates(board, unconnected):
             off = 0.5 + 0.25 * step
             for sign in (1, -1):
                 vx = ax + sign * (half + off)
-                if not (fits(vx, ay, TIE_VIA, net, rects, segs) and
-                        fits(vx, by, TIE_VIA, net, rects, segs)):
+                if not (fits(vx, ay, tie_via, net, rects, segs) and
+                        fits(vx, by, tie_via, net, rects, segs)):
                     continue
-                if not (seg_fits(ax, ay, vx, ay, TIE_W, net, rects, segs) and
-                        seg_fits(bx, by, vx, by, TIE_W, net, rects, segs) and
-                        seg_fits(vx, ay, vx, by, TIE_W, net, rects, segs)):
+                if not (seg_fits(ax, ay, vx, ay, tie_w, net, rects, segs) and
+                        seg_fits(bx, by, vx, by, tie_w, net, rects, segs) and
+                        seg_fits(vx, ay, vx, by, tie_w, net, rects, segs)):
                     continue
-                add_via(board, vx, ay, netinfo)
-                add_via(board, vx, by, netinfo)
-                add_track(board, netinfo, (ax, ay), (vx, ay), pcbnew.F_Cu)
-                add_track(board, netinfo, (bx, by), (vx, by), pcbnew.F_Cu)
-                add_track(board, netinfo, (vx, ay), (vx, by), pcbnew.B_Cu)
+                add_via(board, vx, ay, netinfo, tie_via, tie_drill)
+                add_via(board, vx, by, netinfo, tie_via, tie_drill)
+                add_track(board, netinfo, (ax, ay), (vx, ay), pcbnew.F_Cu, tie_w)
+                add_track(board, netinfo, (bx, by), (vx, by), pcbnew.F_Cu, tie_w)
+                add_track(board, netinfo, (vx, ay), (vx, by), pcbnew.B_Cu, tie_w)
                 for x, y in ((vx, ay), (vx, by)):
-                    rects.append((x, y, TIE_VIA, TIE_VIA, net))
-                segs.append((vx, ay, vx, by, TIE_W, net))
+                    rects.append((x, y, tie_via, tie_via, net))
+                segs.append((vx, ay, vx, by, tie_w, net))
                 made.append("%s [%s]" % (ref, net))
                 placed = True
                 break
@@ -242,18 +246,12 @@ def main():
         pcbnew.ZONE_FILLER(board).Fill(board.Zones())
         board.Save(BOARD_PATH)
 
-    violations, unconnected = drc(BOARD_PATH)
-    if unconnected:
-        board = pcbnew.LoadBoard(BOARD_PATH)
-        done, stuck = close_gaps(board, unconnected)
-        if done:
-            print("gaps closed       : %s" % ", ".join(done))
-        if stuck:
-            print("could not reach   : %s" % ", ".join(stuck))
-        if done:
-            pcbnew.ZONE_FILLER(board).Fill(board.Zones())
-            board.Save(BOARD_PATH)
-
+    # close_gaps() is deliberately not called any more.  Straight-line and
+    # single-corner guesses land half a step short of the copper often
+    # enough to leave stranded fragments -- three of them on +5VS the last
+    # time round -- and gen/maze_route.py now does the same job properly,
+    # with real geometry and a check before anything becomes copper.  The
+    # function is kept for reference.
     violations, unconnected = drc(BOARD_PATH)
 
     print("\nfinal: %d violations, %d unconnected" % (len(violations),

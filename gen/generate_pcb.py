@@ -22,6 +22,7 @@ Output is placed-but-unrouted: run DRC (gen/validate_pcb.py) to confirm the
 placement is legal, then route interactively.
 """
 
+import json
 import os
 import sys
 
@@ -39,6 +40,39 @@ BOARD_W = 84.0
 BOARD_H = 74.0
 FILLET = 3.0
 OUT = os.path.join(PROJ, "esp32s3-can-sd-logger.kicad_pcb")
+PRO = os.path.join(PROJ, "esp32s3-can-sd-logger.kicad_pro")
+
+
+# Netclasses live in the .kicad_pro, and gen/generate_schematic.py is what
+# writes them.  This module builds its board with CreateEmptyBoard(), which
+# knows only the Default class, and saving that board rewrites the project
+# file from the board's own settings -- silently throwing Power and CAN
+# away.  Everything downstream then routes at the default 0.2 mm, including
+# the 1 A rails, and nothing complains: the widths are legal, just wrong.
+#
+# So the classes are lifted out before the save and put back after it.
+
+def read_net_settings():
+    try:
+        with open(PRO, encoding="utf-8") as fh:
+            return json.load(fh).get("net_settings")
+    except Exception:
+        return None
+
+
+def restore_net_settings(keep):
+    if not keep:
+        return "none to restore -- run gen/generate_schematic.py first"
+    with open(PRO, encoding="utf-8") as fh:
+        pro = json.load(fh)
+    if pro.get("net_settings") == keep:
+        return "unchanged"
+    pro["net_settings"] = keep
+    with open(PRO, "w", encoding="utf-8") as fh:
+        json.dump(pro, fh, indent=2)
+    names = [c.get("name") for c in keep.get("classes", [])]
+    return "restored %s (%d patterns)" % (
+        ", ".join(n for n in names if n), len(keep.get("netclass_patterns", [])))
 
 KICAD_FP = None
 for pat in (r"C:\Program Files\KiCad\9.0\share\kicad\footprints",
@@ -405,9 +439,12 @@ def main():
     # unfilled and KiCad regenerates the fill on demand (press B).
 
     board.SetFileName(OUT)
+    keep = read_net_settings()
     pcbnew.SaveBoard(OUT, board)
+    restored = restore_net_settings(keep)
 
     print("board       : %s" % OUT)
+    print("netclasses  : %s" % restored)
     print("size        : %.0f x %.0f mm, 4 layer" % (W, H))
     n_fp = len(list(board.GetFootprints()))
     print("footprints  : %d (%d fixed, %d holes)" % (n_fp, len(fixed_parts), len(hole_parts)))

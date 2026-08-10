@@ -62,12 +62,12 @@ Qty (1 board),Qty (10 boards),References,Value,Footprint,Manufacturer part numbe
 1,10,R12,57.6k,Resistor_SMD:R_0805_2012Metric,,FB lower
 1,10,R13,95.3k,Resistor_SMD:R_0805_2012Metric,,Ripple-injection ramp resistor RA
 3,30,R15 R22 R23,1k,Resistor_SMD:R_0805_2012Metric,,
-5,50,R16 R17 R26 R40 R64,10k,Resistor_SMD:R_0805_2012Metric,,
+10,100,R16 R17 R26 R34 R35 R36 R37 R38 R40 R64,10k,Resistor_SMD:R_0805_2012Metric,,
 2,20,R18 R19,5.1k,Resistor_SMD:R_0805_2012Metric,,
 1,10,R2,25.5k,Resistor_SMD:R_0805_2012Metric,,UVLO lower leg -> board enables at ~5.9V
 2,20,R20 R21,4.7k,Resistor_SMD:R_0805_2012Metric,,
 7,70,R24 R28 R29 R30 R31 R32 R33,33,Resistor_SMD:R_0805_2012Metric,,Edge-rate limit into the level shifter
-6,60,R34 R35 R36 R37 R38 R39,47k,Resistor_SMD:R_0805_2012Metric,,Pulled to the switched rail so nothing back-feeds a powered-down card
+1,10,R39,47k,Resistor_SMD:R_0805_2012Metric,,Card-detect pull-up
 2,20,R4 R6,31.6k,Resistor_SMD:R_0805_2012Metric,,"RON = 5.0V x 2500 / 400kHz (Eq 12) -> 396kHz; tON = 237ns at the 53.3V clamp, comfortably above the 50ns minimum"
 2,20,R41 R42,60.4,Resistor_SMD:R_0805_2012Metric,,Split termination upper half
 4,40,R43 R48 R53 R58,1k 0.1%,Resistor_SMD:R_0805_2012Metric,,"Ch1 series/fault-current limit; 0.1% thin film -- it is inside the divider chain, so its tolerance is a gain error"

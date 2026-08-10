@@ -12,7 +12,7 @@ termination jumper — but trades the second CAN channel for an onboard microSD
 socket and conditioned analog inputs.
 
 **Status: complete and ready to order.** Schematic is ERC-clean on KiCad 9.0.
-The PCB is 84 x 74 mm, 4-layer, fully placed and routed — 1340 tracks, 222
+The PCB is 84 x 74 mm, 4-layer, fully placed and routed — 1432 tracks, 249
 vias, solid GND and +3V3 planes, **all 341 connections routed with zero DRC
 errors and nothing unconnected**. `fab/` holds the Gerbers, drill, BOM and
 pick-and-place files in JLCPCB's format. See §9 for how the board is built
@@ -187,9 +187,13 @@ Wired for **4-bit SDMMC** (`GPIO9`–`GPIO14`), not SPI — roughly 4× the writ
 throughput, which matters when logging a busy bus.
 
 - 33 Ω series damping on CLK, CMD and D0–D3.
-- 47 kΩ pull-ups on CMD and D0–D3. **These pull to `SD_VDD`, the switched
-  rail, not to +3V3** — pull-ups to a permanent rail would back-feed a
-  powered-down card through its ESD structures.
+- 10 kΩ pull-ups on CMD and D0–D3, the value Espressif's SD documentation
+  asks for. **These pull to `SD_VDD`, the switched rail, not to +3V3** —
+  pull-ups to a permanent rail would back-feed a powered-down card through
+  its ESD structures. The pull-up on D3 is also what selects SD mode over
+  SPI mode when the card powers up. Card detect keeps a weaker 47 kΩ: it is
+  a mechanical contact, not a bus line, so there is no reason to burn the
+  standing current.
 - `Q2`/`Q3` form a high-side switch on the card supply, driven by `GPIO7`, so
   firmware can hard power-cycle a card that has locked up mid-write. This is
   the single most useful recovery mechanism in a logger; SD cards do wedge.
@@ -336,6 +340,7 @@ resistors (commodity at LCSC).
 | `gen/finish_routing.py` | Ties duplicated connector pins; reports leftovers |
 | `gen/maze_route.py` | Rip-up-and-retry router for what the autorouter fences in |
 | `gen/tidy_silk.py` | Shrinks and re-places reference designators; no copper |
+| `gen/netclasses.py` | Per-net track and via sizes, read from the project file |
 | `gen/export_fab.py` | Gerbers, drill, JLC assembly BOM and position files |
 | `gen/route_bucks.py` | Places buck islands + routes SW/VIN critical copper |
 | `esp32s3-can-sd-logger.kicad_pcb` | Generated 4-layer board, fully placed and routed |
@@ -465,6 +470,34 @@ Nets with more than four pads are never ripped: a two-pad signal comes back as
 one trace, but a rail that daisy-chains six decoupling caps comes back as six
 separate connections, each able to fail on its own.
 
+**The netclasses live in the `.kicad_pro`, and two things used to lose them.**
+This one is worth spelling out because it fails silently -- narrow track is
+legal track, so nothing errors, nothing warns, and the board looks finished.
+
+`generate_pcb.py` builds its board with `CreateEmptyBoard()`, which knows only
+the Default class; saving that board rewrote the project file from the board's
+own settings and threw Power and CAN away. Everything downstream then routed
+at the default width, **including the 1 A rails** -- 0.2 mm copper, which is
+1.01 A at a 20 °C rise and 147 mV of drop over a 60 mm run. On `+5VS`, the
+sensor excitation rail, that droop lands directly on every ratiometric reading
+the 0.1 % dividers exist to protect. The generator now lifts `net_settings` out
+before the save and puts it back after, and reports what it restored.
+
+The second loss was `net.GetNetClass()`, which returns an undecorated
+SwigPyObject in these scripts and raises `AttributeError` on any method. A
+`try/except ... return DEFAULT` around it turns straight into 0.2 mm power
+rails. `gen/netclasses.py` reads the classes and their glob patterns out of the
+project file instead, and both routers size every track and via from it.
+
+**Pads are not their bounding boxes.** The router's occupancy grid may use
+bounding boxes -- being too cautious only costs it room -- but deciding *where
+a trace may end* cannot. A 1.70 mm round header pad has a 1.70 mm square
+bounding box whose corners are ~0.35 mm off the copper, so 23 % of the apparent
+landing area is bare laminate. Ending there produces a connection that is not
+one, which is how every header on J3/J4/J5/J7 stayed open while the router
+insisted it had routed them. The island builder asks `pad.HitTest()` instead,
+which is exact for round, oval and rounded-rectangle pads alike.
+
 ### Placement
 
 - **Left edge:** sensor harness (`J10`) and power/CAN harness (`J1`) -- one
@@ -493,7 +526,8 @@ conflict appears. Edit `gen/generate_schematic.py` only; then
 `python gen/generate_schematic.py && python gen/validate.py`.
 
 **The board is finished.** 341 of 341 connections routed, **zero DRC errors,
-zero unconnected**: 1340 tracks, 222 vias, solid GND and +3V3 pours. Rebuild
+zero unconnected**: 1432 tracks, 249 vias, solid GND and +3V3 pours, every
+net at its netclass width. Rebuild
 it any time with `python gen/build_board.py --freerouting freerouting.jar` —
 placement, plane vias and the buck loops are deterministic, so the only thing
 that varies between runs is the autorouter's solution for the signals, and

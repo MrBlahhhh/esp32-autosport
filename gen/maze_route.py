@@ -39,6 +39,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from collections import Counter
 
@@ -54,13 +55,17 @@ from pcbnew import FromMM, ToMM, VECTOR2I, PCB_VIA, PCB_TRACK, VIATYPE_THROUGH
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJ = os.path.abspath(os.path.join(HERE, ".."))
+sys.path.insert(0, HERE)
+
+import netclasses                                          # noqa: E402
+
 BOARD_PATH = os.path.join(PROJ, "esp32s3-can-sd-logger.kicad_pcb")
 
 RES = 0.1             # grid pitch, mm
 CLEAR = 0.2           # net-to-net copper clearance the board is built to
 EDGE_KEEP = 0.75      # keep generated copper this far inside the outline
 WIDTH = 0.2           # default track width
-VIA_DIA, VIA_DRILL = 0.5, 0.25
+VIA_DIA, VIA_DRILL = 0.5, 0.25      # only a floor; per-net sizes win
 WINDOW = 13.0         # search margin around the two endpoints, mm
 
 ORTH, DIAG, VIA_COST = 10, 14, 90    # Dijkstra step costs
@@ -126,7 +131,7 @@ def drc(board_path):
 # ------------------------------------------------------------- obstacles ----
 
 def collect(board):
-    """Every obstacle as (kind, geometry, layers, net, movable).
+    """Every obstacle as (kind, geometry, layers, net, movable, pad).
 
     layers is drawn from {F, B}; copper on an inner plane is not an
     obstacle here because nothing is ever routed there.  `movable` marks
@@ -152,20 +157,20 @@ def collect(board):
                         ((ToMM(bb.GetLeft()) + ToMM(bb.GetRight())) / 2.0,
                          (ToMM(bb.GetTop()) + ToMM(bb.GetBottom())) / 2.0,
                          ToMM(bb.GetWidth()), ToMM(bb.GetHeight())),
-                        layers, pad.GetNetname(), False))
+                        layers, pad.GetNetname(), False, pad))
 
     for t in board.GetTracks():
         if isinstance(t, PCB_VIA):
             p = t.GetPosition()
             d = ToMM(t.GetWidth())
             obs.append(("rect", (ToMM(p.x), ToMM(p.y), d, d),
-                        {F, B}, t.GetNetname(), True))
+                        {F, B}, t.GetNetname(), True, None))
         elif t.GetLayer() in (pcbnew.F_Cu, pcbnew.B_Cu):
             s, e = t.GetStart(), t.GetEnd()
             obs.append(("seg", (ToMM(s.x), ToMM(s.y), ToMM(e.x), ToMM(e.y),
                                 ToMM(t.GetWidth())),
                         {F if t.GetLayer() == pcbnew.F_Cu else B},
-                        t.GetNetname(), True))
+                        t.GetNetname(), True, None))
 
     for z in board.Zones():
         if not z.GetIsRuleArea():
@@ -177,7 +182,7 @@ def collect(board):
                     ((ToMM(bb.GetLeft()) + ToMM(bb.GetRight())) / 2.0,
                      (ToMM(bb.GetTop()) + ToMM(bb.GetBottom())) / 2.0,
                      ToMM(bb.GetWidth()), ToMM(bb.GetHeight())),
-                    {F, B}, "~keepout", False))
+                    {F, B}, "~keepout", False, None))
     return obs
 
 
@@ -252,12 +257,12 @@ class Grid:
             d = np.hypot(px - (x1 + t * vx), py - (y1 + t * vy))
         return sl, d - w / 2.0
 
-    def add(self, obs, net, width):
+    def add(self, obs, net, width, via_dia=VIA_DIA):
         """Rasterise every obstacle that is not on `net`."""
         track_m = CLEAR + width / 2.0
-        via_m = CLEAR + VIA_DIA / 2.0
+        via_m = CLEAR + via_dia / 2.0
         big = max(track_m, via_m)
-        for kind, geom, layers, onet, _mv in obs:
+        for kind, geom, layers, onet, _mv, _pad in obs:
             if onet == net:
                 continue
             got = self._footprint(kind, geom, big)
@@ -269,11 +274,11 @@ class Grid:
                 self.blocked[L][i0:i1, j0:j1] |= hit_t
                 self.viabad[L][i0:i1, j0:j1] |= hit_v
 
-    def mask_for(self, obs, net, width):
+    def mask_for(self, obs, net, width, via_dia=VIA_DIA):
         """Cells this net's *rippable* copper blocks, on either layer."""
         out = np.zeros((self.ny, self.nx), bool)
-        margin = max(CLEAR + width / 2.0, CLEAR + VIA_DIA / 2.0)
-        for kind, geom, _layers, onet, mv in obs:
+        margin = max(CLEAR + width / 2.0, CLEAR + via_dia / 2.0)
+        for kind, geom, _layers, onet, mv, _pad in obs:
             if onet != net or not mv:
                 continue
             got = self._footprint(kind, geom, margin)
@@ -299,7 +304,7 @@ def island(grid, obs, net, seed_xy):
     """
     own = {L: np.zeros((grid.ny, grid.nx), bool) for L in (F, B)}
     xfer = np.zeros((grid.ny, grid.nx), bool)
-    for kind, geom, layers, onet, _mv in obs:
+    for kind, geom, layers, onet, _mv, pad in obs:
         if onet != net:
             continue
         got = grid._footprint(kind, geom, RES)
@@ -311,6 +316,17 @@ def island(grid, obs, net, seed_xy):
         # looks connected and is not: the track becomes its own island
         # and the same gap gets re-routed for ever.
         inside = d <= 0.0
+        if pad is not None:
+            # A round through-hole pad does not fill its bounding box --
+            # the corners are 30% of the radius outside the copper. Ending
+            # a trace there connects nothing, which is exactly how every
+            # header on J3/J4/J5/J7 stayed open. Ask the pad itself.
+            inside = np.zeros_like(inside)
+            for iy in range(i0, i1):
+                for ix in range(j0, j1):
+                    x, y = grid.to_mm(iy, ix)
+                    if pad.HitTest(VECTOR2I(int(mm(x)), int(mm(y)))):
+                        inside[iy - i0, ix - j0] = True
         for L in layers:
             own[L][i0:i1, j0:j1] |= inside
         if len(layers) > 1:                  # a via, or a through-hole pad
@@ -514,6 +530,7 @@ def verify(grid, path, home, target):
 def emit(board, grid, path, netinfo, width):
     """Turn a grid path into tracks and vias.  Returns (tracks, vias)."""
     pts = simplify(path)
+    via_dia, via_drill = SIZES.via(netinfo.GetNetname())
     ntrack = nvia = 0
     for a, b in zip(pts, pts[1:]):
         la, ay, ax = a
@@ -524,8 +541,8 @@ def emit(board, grid, path, netinfo, width):
             v = PCB_VIA(board)
             x, y = grid.to_mm(ay, ax)
             v.SetPosition(VECTOR2I(int(mm(x)), int(mm(y))))
-            v.SetDrill(mm(VIA_DRILL))
-            v.SetWidth(mm(VIA_DIA))
+            v.SetDrill(mm(via_drill))
+            v.SetWidth(mm(via_dia))
             v.SetViaType(VIATYPE_THROUGH)
             v.SetNet(netinfo)
             try:
@@ -556,12 +573,11 @@ def rip(board, nets):
     return len(doomed)
 
 
+SIZES = netclasses.Sizes()
+
+
 def net_width(board, netinfo):
-    try:
-        w = ToMM(netinfo.GetNetClass().GetTrackWidth())
-        return w if w > 0 else WIDTH
-    except Exception:
-        return WIDTH
+    return SIZES.track(netinfo.GetNetname())
 
 
 def endpoints(entry):
@@ -581,7 +597,7 @@ def endpoints(entry):
     return None if net is None else (net, ends[0], ends[1])
 
 
-def try_route(board, obs, net, a, b, bounds, width, skip=()):
+def try_route(board, obs, net, a, b, bounds, width, skip=(), via_dia=None):
     """Build a grid ignoring `skip` nets and search.  -> (grid, path)."""
     (ax, ay, al), (bx, by, bl) = a, b
     bx0, by0, bx1, by1 = bounds
@@ -592,7 +608,8 @@ def try_route(board, obs, net, a, b, bounds, width, skip=()):
     # Only rippable copper disappears: a ripped net keeps its pads.
     live = [o for o in obs if not (o[4] and o[3] in skip)]
     grid = Grid(x0, y0, x1, y1)
-    grid.add(live, net, width)
+    grid.add(live, net, width,
+             SIZES.via(net)[0] if via_dia is None else via_dia)
     home = island(grid, live, net, (ax, ay))
     target = island(grid, live, net, (bx, by))
     return grid, route(grid, home, target), home, target

@@ -616,8 +616,11 @@ C(sd, "100nF 16V", "SD_VDD", "GND")
 for sig in ["CLK", "CMD", "D0", "D1", "D2", "D3"]:
     R(sd, "33", "SD_" + sig, "SD_%s_C" % sig, note="Series damping")
 for sig in ["CMD", "D0", "D1", "D2", "D3"]:
-    R(sd, "47k", "SD_VDD", "SD_%s_C" % sig,
-      note="Pulled to the switched rail so nothing back-feeds a powered-down card")
+    R(sd, "10k", "SD_VDD", "SD_%s_C" % sig,
+      note="Espressif's recommended value; pulled to the switched rail so "
+           "nothing back-feeds a powered-down card")
+# Card detect is a slow mechanical contact, not a bus line, so it keeps the
+# weaker pull-up -- less standing current with a card inserted.
 R(sd, "47k", "+3V3", "SD_CD", note="Card-detect pull-up")
 
 # ----------------------------------------------------------------- CAN ----
@@ -957,7 +960,7 @@ def emit_root(sheet_uuids):
 
 
 PRO_TEMPLATE = """{
-  "board": {},
+  "board": {"design_settings": {"rules": {"min_through_hole_diameter": 0.2}}},
   "boards": [],
   "cvpcb": {"equivalence_files": []},
   "libraries": {"pinned_footprint_libs": [], "pinned_symbol_libs": []},
