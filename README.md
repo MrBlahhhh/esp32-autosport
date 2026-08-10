@@ -11,10 +11,11 @@ harness convention (12 V / GND / CAN_H / CAN_L), same default-on 120 Ω
 termination jumper — but trades the second CAN channel for an onboard microSD
 socket and conditioned analog inputs.
 
-**Status: schematic complete, ERC-clean on KiCad 9.0 (107 nets / 168
-component instances). PCB is 84 × 72 mm, 4-layer, placed; buck SW/VIN copper
-is partially scripted (`gen/route_bucks.py`). Full routing is the remaining
-work — see §10.**
+**Status: schematic complete and ERC-clean on KiCad 9.0. PCB is 84 x 74 mm,
+4-layer, placed and routed: ~1500 tracks, ~210 vias, solid GND and +3V3
+planes, **DRC-clean with zero violations**. A handful of short connections in
+the densest blocks are left for the interactive router — `gen/finish_routing.py`
+names them every run. See §9 for the pipeline and §10 for what remains.**
 
 ---
 
@@ -458,27 +459,36 @@ plug access anyway.
 conflict appears. Edit `gen/generate_schematic.py` only; then
 `python gen/generate_schematic.py && python gen/validate.py`.
 
-**Placement is reconciled and DRC-clean (zero violations).**
-`gen/generate_pcb.py` owns ALL placement: the buck islands live in its
-`BUCK_FIXED` table, identified by (sheet, value, net set) so reference
-renumbering cannot scatter them.  `gen/route_bucks.py` is routing-only — it
-finds parts on the saved board by value/net signature and draws the SW loops
-and the +VBAT feed.  The board is 84 x 74 mm.
+**The board is routed and DRC-clean** (zero violations). Rebuild it any time
+with `python gen/build_board.py --freerouting freerouting.jar` — placement,
+plane vias and the buck loops are deterministic, so the only thing that
+varies between runs is the autorouter's solution for the signals.
 
-**Finish the PCB:**
+### Three connections are left for the interactive router
 
-1. Re-run after any schematic change (placement and buck routes regenerate
-   deterministically):
-   ```sh
-   python gen/generate_schematic.py && python gen/validate.py
-   "C:\Program Files\KiCad\9.0\bin\python.exe" gen/generate_pcb.py
-   "C:\Program Files\KiCad\9.0\bin\python.exe" gen/route_bucks.py
-   "C:\Program Files\KiCad\9.0\bin\python.exe" gen/finish_routing.py
-   ```
-2. Hand-route the remaining nets in the order in §9 (SDMMC, USB pair, CAN
-   pair, analog last); fill zones (`B`); iterate DRC.
-3. Before JLCPCB order: lock LCSC for the ASWPA8050S220MT and C2 bulk; clean
-   silk; export Gerbers + JLC BOM/CPL.
+These sit in the two most congested blocks and the autorouter could not
+reach them; `gen/finish_routing.py` prints them by name after every run:
 
-**Out of scope for layout:** firmware (TWAI, SDMMC, ADS1115, WS2812 on GPIO48,
-SPI client). GPIO map in §6 is the firmware contract.
+| Net | From | To |
+|---|---|---|
+| `SD_CMD` | `U4` pin 21 | `R29` pin 1 |
+| `SD_D0` | `U4` pin 20 | `R30` pin 1 |
+| `USB_DM_CON` | `U5` pin 3 | the D- track from `J2` |
+
+Open `esp32s3-can-sd-logger.kicad_pro`, press `B` to fill the pours if they
+look empty, and route those three with the interactive router — a few minutes
+of work. Re-run DRC afterwards.
+
+### Before ordering from JLCPCB
+
+1. `python gen/export_fab.py` writes `fab/`: Gerbers + drill (zipped),
+   `bom.csv` and `positions.csv` in JLC's column layout.
+2. It prints the parts with no LCSC number — pick those in JLC's catalogue
+   at order time (the polyfuses, the P-channel FET, the bulk electrolytic,
+   the 0.1 % divider resistors, LEDs and passives).
+3. Give the silkscreen a once-over in KiCad: auto-placement does not move
+   reference designators, so some overlap parts.
+4. Stackup is JLC04161H-7628, 4 layer, 1.6 mm, 1 oz outer.
+
+**Out of scope:** firmware (TWAI, SDMMC, ADS1115, WS2812 on GPIO48, SPI
+client). The GPIO map in §6 is the firmware contract.

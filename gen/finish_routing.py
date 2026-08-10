@@ -44,6 +44,7 @@ from stitch_planes import collect, fits, seg_fits          # noqa: E402
 BOARD_PATH = os.path.join(PROJ, "esp32s3-can-sd-logger.kicad_pcb")
 
 PAD_RE = re.compile(r"^(?:PTH )?[Pp]ad (\S+) \[([^\]]*)\] of (\S+)")
+NET_RE = r"\[([^\]]+)\]"
 TIE_VIA, TIE_DRILL, TIE_W = 0.5, 0.25, 0.2
 
 
@@ -164,6 +165,70 @@ def tie_duplicates(board, unconnected):
     return made
 
 
+
+def close_gaps(board, unconnected):
+    """Route the short leftovers the autorouter did not quite finish.
+
+    DRC gives both ends of every open connection.  Each is tried as a
+    straight segment, then as an L on either side, on F.Cu first and B.Cu
+    (with a via at each end) second -- all checked against real pad and
+    track geometry.
+    """
+    rects, segs = collect(board)
+    done, stuck = [], []
+    for entry in unconnected:
+        items = entry.get("items", [])
+        if len(items) < 2:
+            continue
+        net = None
+        for it in items:
+            m = re.search(NET_RE, it.get("description", ""))
+            if m:
+                net = m.group(1)
+                break
+        pa, pb = items[0].get("pos"), items[1].get("pos")
+        if net is None or not pa or not pb:
+            continue
+        netinfo = board.FindNet(net)
+        if netinfo is None:
+            continue
+        ax, ay, bx, by = pa["x"], pa["y"], pb["x"], pb["y"]
+
+        routed = False
+        for layer in (pcbnew.F_Cu, pcbnew.B_Cu):
+            paths = [[(ax, ay), (bx, by)],
+                     [(ax, ay), (bx, ay), (bx, by)],
+                     [(ax, ay), (ax, by), (bx, by)]]
+            for path in paths:
+                ok = True
+                for p1, p2 in zip(path, path[1:]):
+                    if not seg_fits(p1[0], p1[1], p2[0], p2[1], TIE_W,
+                                    net, rects, segs):
+                        ok = False
+                        break
+                if not ok:
+                    continue
+                if layer == pcbnew.B_Cu:
+                    if not (fits(ax, ay, TIE_VIA, net, rects, segs) and
+                            fits(bx, by, TIE_VIA, net, rects, segs)):
+                        continue
+                    add_via(board, ax, ay, netinfo)
+                    add_via(board, bx, by, netinfo)
+                    for x, y in ((ax, ay), (bx, by)):
+                        rects.append((x, y, TIE_VIA, TIE_VIA, net))
+                for p1, p2 in zip(path, path[1:]):
+                    add_track(board, netinfo, p1, p2, layer)
+                    segs.append((p1[0], p1[1], p2[0], p2[1], TIE_W, net))
+                done.append(net)
+                routed = True
+                break
+            if routed:
+                break
+        if not routed:
+            stuck.append(net)
+    return done, stuck
+
+
 def main():
     print("asking DRC what is still open…")
     violations, unconnected = drc(BOARD_PATH)
@@ -178,6 +243,19 @@ def main():
         board.Save(BOARD_PATH)
 
     violations, unconnected = drc(BOARD_PATH)
+    if unconnected:
+        board = pcbnew.LoadBoard(BOARD_PATH)
+        done, stuck = close_gaps(board, unconnected)
+        if done:
+            print("gaps closed       : %s" % ", ".join(done))
+        if stuck:
+            print("could not reach   : %s" % ", ".join(stuck))
+        if done:
+            pcbnew.ZONE_FILLER(board).Fill(board.Zones())
+            board.Save(BOARD_PATH)
+
+    violations, unconnected = drc(BOARD_PATH)
+
     print("\nfinal: %d violations, %d unconnected" % (len(violations),
                                                       len(unconnected)))
     for x in violations[:12]:

@@ -3,3 +3,5 @@ fab/board.dsn
 fab/board.ses
 gen/__pycache__/
 logs/
+fab/gerbers/
+fab/*.zip

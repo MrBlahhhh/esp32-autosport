@@ -148,7 +148,7 @@ def main():
             p = t.GetPosition()
             have_via.append((ToMM(p.x), ToMM(p.y), t.GetNetname()))
 
-    todo = []
+    todo, stacked = [], set()
     for fp in board.GetFootprints():
         for pad in fp.Pads():
             net = pad.GetNetname()
@@ -164,17 +164,17 @@ def main():
                        for vx, vy, vnet in have_via)
             if near:
                 continue
+            spot = (net, round(px, 3), round(py, 3))
+            if spot in stacked:
+                continue          # a pad at the same place already queued
+            stacked.add(spot)
             todo.append((pad, px, py, ToMM(bb.GetWidth()),
                          ToMM(bb.GetHeight()), net))
 
     print("pads needing a plane via : %d" % len(todo))
 
-    placed, failed, skipped = 0, [], 0
+    placed, failed = 0, []
     for pad, px, py, w, h, net in todo:
-        if any(vnet == net and math.hypot(vx - px, vy - py) < 1.2
-               for vx, vy, vnet in have_via):
-            skipped += 1           # a stacked duplicate pad already served
-            continue
         netinfo = pad.GetNet()
         layer = (pad.GetLayer() if pad.GetLayer() in (pcbnew.F_Cu, pcbnew.B_Cu)
                  else pcbnew.F_Cu)
@@ -215,7 +215,6 @@ def main():
 
                     rects.append((cx, cy, dia, dia, net))
                     segs.append((px, py, cx, cy, 0.3, net))
-                    have_via.append((cx, cy, net))
                     placed += 1
                     done = True
                     break
@@ -229,8 +228,6 @@ def main():
                            pad.GetNumber(), net))
 
     print("plane vias placed        : %d" % placed)
-    if skipped:
-        print("already served by a twin  : %d" % skipped)
     if failed:
         print("no room for (%d)         : %s" % (len(failed),
                                                  ", ".join(failed)))

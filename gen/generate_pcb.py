@@ -153,7 +153,7 @@ ZONES = [
     ("ledr",      (78.5, 48.7,  5.0,  4.6), lambda p, n, s: n & {"LED1_A", "LED2_A"}),
     ("usb",       (62.0, 14.2, 13.0,  8.8), lambda p, n, s: n & {"USB_DP_CON", "USB_DM_CON", "USB_CC1", "USB_CC2", "VBUS_IN", "VBUS", "USB_DP", "USB_DM"}),
     ("sdpwr",     (59.0, 49.3, 11.0,  8.5), lambda p, n, s: n & {"SD_PG", "SD_EN_G", "SD_PWR_EN"}),
-    ("sd",        (51.0, 22.4, 11.5, 12.4), lambda p, n, s: s == "SD Card"),
+    ("sd",        (49.8, 21.4, 13.2, 15.0), lambda p, n, s: s == "SD Card"),
     ("can",       ( 9.5, 28.2, 21.0, 15.0), lambda p, n, s: s == "CAN"),
     ("sens5v",    (59.0, 62.5, 14.5,  6.9), lambda p, n, s: n & {"VSENS_F", "+5VS"} and s == "Power"),
     ("frontend",  ( 9.2, 43.3, 24.4, 25.0), lambda p, n, s: s == "Power" and n & {"VBAT_IN", "VBAT_F", "VBAT_FB", "GATE_RB", "VCAP", "VBAT_UVLO", "+VBAT"}),
@@ -333,8 +333,13 @@ def main():
 
     # --- shelf-pack each zone ---------------------------------------------
     GAP = 0.4
+    # The microSD block is nothing but series resistors and pull-ups that all
+    # have to be routed through; 0.4 mm leaves no channel for a 0.2 mm track
+    # with clearance either side, so that one zone gets more elbow room.
+    ZONE_GAP = {"sd": 0.85}
     report = []
     for name, (zx, zy, zw, zh), _ in ZONES:
+        gap = ZONE_GAP.get(name, GAP)
         parts = buckets[name]
         # tallest first packs shelves tightly
         sized = []
@@ -346,14 +351,14 @@ def main():
         overflow = False
         for h, w, fp in sized:
             if x + w > zx + zw and x > zx:
-                x, y = zx, y + row_h + GAP
+                x, y = zx, y + row_h + gap
                 row_h = 0.0
             bb = courtyard_box(fp)
             # position so the courtyard's top-left lands at (x, y)
             fp.SetPosition(pt(x + w / 2.0, y + h / 2.0))
             bb = courtyard_box(fp)
             fp.Move(pt(x, y) - pcbnew.VECTOR2I(bb.GetLeft(), bb.GetTop()))
-            x += w + GAP
+            x += w + gap
             row_h = max(row_h, h)
             if y + row_h > zy + zh:
                 overflow = True
