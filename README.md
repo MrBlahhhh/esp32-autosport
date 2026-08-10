@@ -1,35 +1,5 @@
 # ESP32-S3 CAN + microSD Automotive Logger — Rev A
 
-## 9. Board layout
-
-The board is generated too: `gen/generate_pcb.py` (run with KiCad's bundled
-Python) reads the same part/net tables as the schematic generator, loads real
-footprints, assigns every pad its net, and places parts into functional zones.
-84 x 72 mm, 4 layers (F.Cu / GND / +3V3 / B.Cu — inner planes are drawn as
-zones, press `B` in KiCad to fill), JLCPCB JLC04161H-7628 stackup assumed,
-0.2 mm minimum drill to match the LM5164 thermal vias.
-
-Placement logic, all encoded in the generator:
-
-- **Left edge:** sensor harness (`J8`) and power/CAN harness (`J1`) — one
-  wiring direction toward the car.
-- **Top:** four identical analog channel columns with their solder jumpers
-  facing up for probing; ESP32 module top-center with the **antenna
-  overhanging the board edge** (its keepout area falls entirely off-board);
-  Spare-IO header left of it.
-- **Right edge:** USB-C and microSD for bench access, then RESET/BOOT and the
-  status LEDs.
-- **Bottom band:** battery front end (fuse, ideal diode, TVS, bulk) beside
-  `J1`, then the 5 V and 3.3 V bucks each packed with their own RON/FB/ripple
-  network and output caps; UART/I2C/rail headers on the bottom edge.
-
-`kicad-cli pcb drc` passes with **zero violations** (335 unconnected items
-are the ratsnest — routing has not been done yet). Routing order when it
-starts: buck power loops first, then SDMMC (length-matched-ish, short), USB
-differential pair, CAN pair, analog last, stitching vias around the planes.
-
----
-
 A single-CAN, single-microSD ESP32-S3 board with a motorsport-grade front end:
 reverse-battery protection that survives being hooked up backwards indefinitely,
 load-dump clamping, and four analog sensor inputs whose dividers are selected by
@@ -393,3 +363,33 @@ full ERC.
 
 Editing the `.kicad_sch` files by hand is fine — they are ordinary KiCad files —
 but the next generator run will overwrite them.
+
+---
+
+## 9. Board layout
+
+The board is generated too: `gen/generate_pcb.py` (run with KiCad's bundled
+Python) reads the same part/net tables as the schematic generator, loads real
+footprints, assigns every pad its net, and places parts into functional zones.
+84 x 72 mm, 4 layers (F.Cu / GND / +3V3 / B.Cu — inner planes are drawn as
+zones, press `B` in KiCad to fill), JLCPCB JLC04161H-7628 stackup assumed,
+0.2 mm minimum drill to match the LM5164 thermal vias.
+
+Placement logic, all encoded in the generator:
+
+- **Left edge:** sensor harness (`J8`) and power/CAN harness (`J1`) — one
+  wiring direction toward the car.
+- **Top:** four identical analog channel columns with their solder jumpers
+  facing up for probing; ESP32 module top-center with the **antenna
+  overhanging the board edge** (its keepout area falls entirely off-board);
+  Spare-IO header left of it.
+- **Right edge:** USB-C and microSD for bench access, then RESET/BOOT and the
+  status LEDs.
+- **Bottom band:** battery front end (fuse, ideal diode, TVS, bulk) beside
+  `J1`, then the 5 V and 3.3 V bucks each packed with their own RON/FB/ripple
+  network and output caps; UART/I2C/rail headers on the bottom edge.
+
+`kicad-cli pcb drc` passes with **zero violations** (335 unconnected items
+are the ratsnest — routing has not been done yet). Routing order when it
+starts: buck power loops first, then SDMMC (length-matched-ish, short), USB
+differential pair, CAN pair, analog last, stitching vias around the planes.
