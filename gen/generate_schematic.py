@@ -621,26 +621,47 @@ part(an, "J", "Connector_Generic:Conn_01x08", "Sensor harness", JST8,
 
 for n in range(1, 5):
     inp, node, out = "AIN%d_IN" % n, "AIN%d_A" % n, "AIN%d" % n
-    R(an, "1k", inp, node, note="Ch%d series/fault-current limit" % n)
+    R(an, "1k 0.1%", inp, node,
+      note="Ch%d series/fault-current limit; 0.1%% thin film -- it is inside "
+           "the divider chain, so its tolerance is a gain error" % n)
     part(an, "JP", "Jumper:SolderJumper_2_Open", "PULLUP%d" % n, SJ2,
          {"1": "+5VS", "2": "AIN%d_PU" % n},
          note="Close for 2-wire NTC / open-collector sensors")
     R(an, "2.49k", "AIN%d_PU" % n, node, note="Ch%d bias resistor" % n)
-    R(an, "10k", node, out, note="Ch%d divider upper leg" % n)
+    R(an, "10k 0.1%", node, out,
+      note="Ch%d divider upper leg, 0.1%% thin film for AFR-grade accuracy" % n)
     part(an, "JP", "Jumper:SolderJumper_2_Open", "BYPASS%d" % n, SJ2,
          {"1": node, "2": out},
          note="Close for a raw 0-3.3V sensor (shorts the upper leg)")
     part(an, "JP", "Jumper:SolderJumper_3_Open", "RANGE%d" % n, SJ3,
          {"2": out, "1": "AIN%d_R1" % n, "3": "AIN%d_R2" % n},
          note="C-A = 0-5V range, C-B = 0-16V range, both open = no divider")
-    R(an, "15k", "AIN%d_R1" % n, "GND", note="0-5V range: 5.0V in -> 3.00V at the ADC")
-    R(an, "2.21k", "AIN%d_R2" % n, "GND", note="0-16V range: 16.0V in -> 2.89V at the ADC")
+    R(an, "15k 0.1%", "AIN%d_R1" % n, "GND",
+      note="0-5V range: 5.0V in -> ~2.88V at the ADC (1k series included); "
+           "exact scale is a firmware calibration constant")
+    R(an, "2.21k 0.1%", "AIN%d_R2" % n, "GND",
+      note="0-16V range: 16.0V in -> ~2.67V at the ADC (1k series included)")
     C(an, "100nF 16V", out, "GND", note="Ch%d anti-alias / ADC charge reservoir" % n)
     # One SOT-23 series pair: GND -> signal -> +3V3, so the node is clamped a
     # Schottky drop either side of the rails.
     part(an, "D", "Device:D_Schottky_Dual_Series_AKC", "BAT54S", SOT23,
          {"1": "GND", "3": out, "2": "+3V3"}, "BAT54S",
          "Ch%d rail clamp (both polarities)" % n)
+
+# Precision path for the four channels: the ESP32-S3 ADC is only good for
+# ±1-2% even calibrated, which is ±0.2 AFR on a 0-5V wideband output. The
+# ADS1115 (16-bit delta-sigma, on the existing I2C bus at 0x48) shares the
+# conditioned AINx nodes, so firmware chooses per channel: fast-and-rough on
+# the internal ADC, or slow-and-accurate here. Inputs are clamped to +3V3 by
+# the BAT54S pairs, within the ADS1115's VDD+0.3V absolute maximum.
+part(an, "U", "Analog_ADC:ADS1115IDGS", "ADS1115-Q1",
+     "Package_SO:VSSOP-10_3x3mm_P0.5mm",
+     {"1": "GND", "3": "GND", "4": "AIN1", "5": "AIN2", "6": "AIN3",
+      "7": "AIN4", "8": "+3V3", "9": "I2C_SDA", "10": "I2C_SCL"},
+     "ADS1115QDGSRQ1",
+     "16-bit 4-ch I2C ADC for AFR-grade accuracy; ADDR to GND = 0x48",
+     nc=("2",))
+C(an, "100nF 16V", "+3V3", "GND", note="ADS1115 decoupling")
 
 R(an, "100k", "+VBAT", "VBAT_SNS", note="Battery monitor: divide by 11")
 R(an, "10k", "VBAT_SNS", "GND")

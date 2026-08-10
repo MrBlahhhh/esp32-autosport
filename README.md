@@ -23,10 +23,10 @@ socket and conditioned analog inputs.
 | Supply input | 6–36 V continuous, reverse-protected to −65 V, clamped at 53.3 V |
 | CAN | 1× CAN 2.0B, TJA1051T/3, ESP32-S3 TWAI controller, jumper-selectable split termination |
 | Storage | microSD, 4-bit SDMMC, switchable card supply |
-| Analog in | 4 channels, solder-jumper divider (0–3.3 V / 0–5 V / 0–16 V) + optional pull-up bias |
+| Analog in | 4 channels, solder-jumper divider (0–3.3 V / 0–5 V / 0–16 V) + optional pull-up bias, shared by the ESP32 ADC and a 16-bit ADS1115 |
 | Extras | Battery voltage monitor, USB-C (native USB), I²C/Qwiic header, UART0 header, spare-IO header |
 | Rails | +5 V @ 1 A, +3V3 @ 1 A, +5 V sensor excitation (separately fused) |
-| Board area | 153 components, 81 distinct BOM lines |
+| Board area | 155 components, 84 distinct BOM lines |
 
 ---
 
@@ -126,8 +126,8 @@ AINn_IN ──[1k series]──┬─────────[10k]────�
 | RANGE | BYPASS | Input range | At the ADC | Typical sensor |
 |---|---|---|---|---|
 | open | **closed** | 0–3.3 V | 1:1 | 3.3 V-native sensor, ratiometric output |
-| **A** | open | 0–5.0 V | 3.00 V at 5.0 V in | MAP, TPS, most 5 V ratiometric sensors |
-| **B** | open | 0–16 V | 2.89 V at 16.0 V in | Battery-referenced signals, 12 V switch inputs |
+| **A** | open | 0–5.0 V | ≈2.88 V at 5.0 V in | MAP, TPS, wideband AFR, most 5 V sensors |
+| **B** | open | 0–16 V | ≈2.68 V at 16.0 V in | Battery-referenced signals, 12 V switch inputs |
 
 `PULLUP` is independent of the above: closing it puts 2.49 kΩ to `+5VS` on the
 input node, turning the channel into a bias network for **2-wire NTC sensors**
@@ -137,6 +137,15 @@ open for anything that drives its own output.
 Every channel lands on **ADC1** (`GPIO1`, `GPIO2`, `GPIO4`, `GPIO5`), which is
 the half of the ESP32-S3 ADC that keeps working while WiFi is active. ADC2 is
 unusable with WiFi up — that constraint drove the pin assignment.
+
+The same four conditioned nodes also feed `U7`, an **ADS1115-Q1** (16-bit
+delta-sigma, on the existing I²C bus at 0x48). The ESP32-S3's internal ADC is
+only good for ±1–2 % even after calibration — ±0.2 AFR on a 0–5 V wideband
+output — so firmware picks per channel: fast-and-rough on the internal ADC, or
+slow-and-accurate (up to 860 SPS) on the ADS1115. The divider resistors are
+0.1 % thin-film so the front end does not throw away what the converter buys,
+and the note in the schematic records that the 1 k series resistor is part of
+the divider chain — the exact scale factor is a firmware calibration constant.
 
 `R62`/`R63` divide `+VBAT` by 11 onto `GPIO6` for battery-voltage logging:
 14.0 V reads 1.27 V, and the 36 V top of the input range reads 3.27 V.
@@ -246,12 +255,14 @@ Two more issues surfaced while reading the datasheet, both fixed:
   output, CB into FB: 121 k / 3.3 nF / 270 pF on 5 V, 95.3 k / 3.3 nF / 270 pF
   on 3.3 V), sized per TI's design example for ≈20 mV of ramp at 14 V in.
 
+5. ~~ESP32-S3 ADC linearity~~ — resolved for the AFR use case: `U7`, an
+   onboard ADS1115-Q1 (16-bit, I²C), now shares the four conditioned input
+   nodes, and the divider resistors are 0.1 % thin-film. See §3.
+
 Still open for a second pair of eyes:
 
-5. **ESP32-S3 ADC linearity** is mediocre even calibrated. If any channel needs
-   better than roughly ±1–2 %, put an external SAR ADC on the I²C/SPI header
-   rather than fighting the internal one.
-6. `+5VS` accuracy (§2) if ratiometric sensors are used.
+6. `+5VS` accuracy (§2) if ratiometric sensors are used. (AFR is absolute, not
+   ratiometric, so this does not affect the wideband channel.)
 7. This is a schematic, not a layout. The usual switching-regulator rules
    apply: tight input-cap loops on `U2`/`U3`, `C4` right at the pin, ground
    pour under the ideal-diode block, CAN pair routed as a differential pair
@@ -313,7 +324,7 @@ python3 gen/validate.py
 `validate.py` loads every sheet through KiCad, exports the hierarchy's netlist,
 asserts that KiCad's own extracted connectivity matches `netlist.txt`
 node-for-node, and runs ERC where available. It currently passes on 104 nets /
-160 component instances.
+162 component instances.
 
 The generator embeds symbol definitions copied verbatim from the installed
 libraries, so the embedded copies always match whatever KiCad generation you
