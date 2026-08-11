@@ -61,6 +61,7 @@ def buck(anchor, rail, sw, en, ron, fb, bst, ramp, pg, ind, ron_r, fb_lo,
             [(19.05, -2.54), (19.05, -1.27)],                    # BST cap foot
             [(25.40, -2.54), (25.40, 0.00)],                     # SW to ramp R
             [(33.02, -2.54), (45.72, -2.54), (45.72, 1.27)],     # out to divider
+            [(39.37, -2.54), (39.37, -6.35)],                    # out rail stub
             [(12.70, 2.54), (41.91, 2.54), (41.91, 15.24)],      # FB sense
             [(41.91, 10.16), (45.72, 10.16)],                    # FB tap
             [(45.72, 8.89), (45.72, 12.70)],                     # divider mid
@@ -72,8 +73,9 @@ def buck(anchor, rail, sw, en, ron, fb, bst, ramp, pg, ind, ron_r, fb_lo,
         # point that is merely a wire end -- even one two pins share -- does
         # not help and does break things: KiCad stopped carrying SW past the
         # inductor and FB past the divider tap until these came out.
-        "junctions": [(19.05, -2.54), (30.48, 7.62),
+        "junctions": [(19.05, -2.54), (30.48, 7.62), (39.37, -2.54),
                       (41.91, 10.16), (45.72, 10.16)],
+        "rails": [(rail, 39.37, -6.35, (0, -1))],
         # Angles keep the name off the wire it names. A horizontal net label
         # printed on a short horizontal wire lands on the pin name behind it;
         # turned 90 degrees it stands clear.
@@ -84,8 +86,169 @@ def buck(anchor, rail, sw, en, ron, fb, bst, ramp, pg, ind, ron_r, fb_lo,
             ramp: (31.75, 7.62, 0),
             bst: (13.97, -7.62, 0),
             ron: (-15.24, 8.89, 0),
+            pg: (13.97, 5.08, 0),
         },
     }
+
+
+def channel(n):
+    """One protected, scaled analogue input, drawn left to right.
+
+    Signal in from the harness on the left, transient clamp straight to
+    ground, series resistor, then the optional pull-up for a switch or a
+    two-wire sender. The 10k and its bypass jumper set the gain, the range
+    jumper picks which leg goes to ground, and the filter cap and Schottky
+    clamp sit on the ADC node at the right. Four of these, identical.
+    """
+    inn, a, pu = "AIN%d_IN" % n, "AIN%d_A" % n, "AIN%d_PU" % n
+    ain, r1, r2 = "AIN%d" % n, "AIN%d_R1" % n, "AIN%d_R2" % n
+    return {
+        "sheet": "Analog Inputs",
+        "anchor": ("1k", {inn, a}),
+        "parts": [
+            # value            nets            dx      dy   rot
+            ("SMAJ40CA",   {inn, "GND"},    -12.70,   3.81, 270),
+            ("PULLUP%d" % n, {"+5VS", pu},    7.62, -15.24, 270),
+            ("2.49k",      {pu, a},           7.62,  -3.81,   0),
+            ("10k",        {a, ain},         26.67,   0.00,  90),
+            # A solder jumper is already horizontal at 0 -- unlike Device:R,
+            # which needs 90 to lie down.
+            ("BYPASS%d" % n, {a, ain},       26.67,   7.62,   0),
+            ("RANGE%d" % n, {r1, ain, r2},   40.64,  10.16, 180),
+            ("15k",        {r1, "GND"},      45.72,  19.05,   0),
+            ("2.21k",      {r2, "GND"},      35.56,  19.05,   0),
+            ("100nF",      {ain, "GND"},     55.88,   3.81,   0),
+            ("BAT54S", {"GND", "+3V3", ain}, 50.80, -16.51,   0),
+        ],
+        "wires": [
+            [(-20.32, 0.00), (-3.81, 0.00)],      # harness in, clamped
+            [(3.81, 0.00), (22.86, 0.00)],        # after the series resistor
+            [(7.62, -11.43), (7.62, -7.62)],      # pull-up jumper to its R
+            [(22.86, 0.00), (22.86, 7.62)],       # bypass jumper, in
+            [(30.48, 0.00), (30.48, 7.62)],       # bypass jumper, out
+            [(30.48, 0.00), (55.88, 0.00)],       # the ADC node
+            [(40.64, 6.35), (40.64, 0.00)],       # range jumper common
+            [(45.72, 10.16), (45.72, 15.24)],     # range leg 1
+            [(35.56, 10.16), (35.56, 15.24)],     # range leg 2
+            [(50.80, -11.43), (50.80, 0.00)],     # clamp
+        ],
+        "junctions": [(-12.70, 0.00), (7.62, 0.00),
+                      (40.64, 0.00), (50.80, 0.00)],
+        # Every name sits on a stretch of wire nothing else is using: the
+        # jumpers carry long values (RANGE3, BYPASS3) that sprawl either side
+        # of the part, so the legs are drawn long enough to label below them.
+        "labels": {
+            inn: (-20.32, 0.00, 0),
+            a: (16.51, 0.00, 0),
+            pu: (7.62, -9.53, 0),
+            ain: (33.02, 0.00, 0),
+            r1: (45.72, 15.24, 0),
+            r2: (35.56, 15.24, 0),
+        },
+    }
+
+
+CAN = {
+    # The transceiver, then the bus, drawn as a bus: CANH along the top and
+    # CANL along the bottom, with the common-mode choke, the transient
+    # clamps, the split termination and the test points hanging between them
+    # in the order the signal meets them.
+    "sheet": "CAN",
+    "anchor": ("TJA1051T/3", None),
+    "parts": [
+        # value                nets                        dx      dy   rot
+        ("100nF",  {"+5V", "GND"},                      -10.16, -20.32,   0),
+        ("100nF",  {"+3V3", "GND"},                     -20.32, -20.32,   0),
+        ("10k",    {"CAN_S", "GND"},                    -17.78,   8.89,   0),
+        ("51uH CMC", {"CANH_T", "CAN_H", "CANL_T", "CAN_L"},
+                                                         25.40,   0.00,   0),
+        ("SMAJ26CA", {"CAN_H", "GND"},                   43.18,  -8.89, 270),
+        ("SMAJ26CA", {"CAN_L", "GND"},                   43.18,  24.13, 270),
+        ("TERM (default ON)", {"CAN_H", "TERM_A"},       53.34,  -8.89, 270),
+        ("60.4",   {"TERM_A", "CAN_SPLIT"},              53.34,   1.27,   0),
+        ("60.4",   {"CAN_SPLIT", "CAN_L"},               53.34,  12.70,   0),
+        ("4.7nF",  {"CAN_SPLIT", "GND"},                 60.96,   8.89,   0),
+        ("CAN_H",  {"CAN_H"},                            68.58, -12.70,   0),
+        ("CAN_L",  {"CAN_L"},                            68.58,  20.32, 180),
+    ],
+    "wires": [
+        [(12.70, -2.54), (20.32, -2.54)],                     # to the choke
+        [(12.70, 2.54), (20.32, 2.54)],
+        [(30.48, -2.54), (35.56, -2.54), (35.56, -12.70),
+         (68.58, -12.70)],                                    # CANH out
+        [(30.48, 2.54), (35.56, 2.54), (35.56, 20.32),
+         (68.58, 20.32)],                                     # CANL out
+        [(-12.70, 5.08), (-17.78, 5.08)],                     # mode select
+        [(53.34, -5.08), (53.34, -2.54)],                     # jumper to 60R
+        [(53.34, 5.08), (53.34, 8.89)],                       # split node
+        [(53.34, 5.08), (60.96, 5.08)],                       # split cap
+        [(53.34, 16.51), (53.34, 20.32)],                     # 60R to CANL
+    ],
+    "junctions": [(43.18, -12.70), (53.34, -12.70),
+                  (43.18, 20.32), (53.34, 20.32)],
+    "labels": {
+        "CANH_T": (14.61, -2.54, 0),
+        "CANL_T": (14.61, 2.54, 0),
+        "CAN_S": (-16.51, 5.08, 0),
+        "TERM_A": (53.34, -3.81, 0),
+        "CAN_SPLIT": (55.88, 5.08, 0),
+        "CAN_H": (38.10, -12.70, 0),
+        "CAN_L": (38.10, 20.32, 0),
+    },
+}
+
+
+SDCARD = {
+    # The card sits on the right and everything feeding it reads right to
+    # left: the switched supply and its gate drive top left, the pull-up bank
+    # on the switched rail beneath it, then the series terminators in line
+    # with the card pins they damp.
+    "sheet": "SD Card",
+    "anchor": ("microSD push-pull", None),
+    "parts": [
+        # value      nets                          dx      dy   rot
+        ("-20V 2.3A P-ch", {"SD_PG", "+3V3", "SD_VDD"},
+                                                -72.39, -73.66, 180),
+        ("100k",     {"+3V3", "SD_PG"},         -60.96, -78.74,   0),
+        ("60V 300mA N-ch", {"SD_EN_G", "GND", "SD_PG"},
+                                                -57.15, -63.50,   0),
+        ("1k",       {"SD_PWR_EN", "SD_EN_G"},  -73.66, -63.50,  90),
+        ("100k",     {"SD_EN_G", "GND"},        -66.04, -59.69,   0),
+        # The switched rail runs down the left; the bulk and bypass caps sit
+        # on it at the top, then the five pull-ups, each one reaching right
+        # to the card line it holds up.
+        ("10uF",     {"SD_VDD", "GND"},        -100.33, -64.77, 270),
+        ("100nF",    {"SD_VDD", "GND"},        -100.33, -59.69, 270),
+        ("10k",      {"SD_VDD", "SD_CMD_C"},    -92.71, -50.80,  90),
+        ("10k",      {"SD_VDD", "SD_D0_C"},     -92.71, -43.18,  90),
+        ("10k",      {"SD_VDD", "SD_D1_C"},     -92.71, -35.56,  90),
+        ("10k",      {"SD_VDD", "SD_D2_C"},     -92.71, -27.94,  90),
+        ("10k",      {"SD_VDD", "SD_D3_C"},     -92.71, -20.32,  90),
+        ("33",       {"SD_D2", "SD_D2_C"},      -64.77, -25.40,  90),
+        ("33",       {"SD_D3", "SD_D3_C"},      -64.77, -17.78,  90),
+        ("33",       {"SD_CMD", "SD_CMD_C"},    -64.77, -10.16,  90),
+        ("33",       {"SD_CLK", "SD_CLK_C"},    -64.77,  -2.54,  90),
+        ("33",       {"SD_D0", "SD_D0_C"},      -64.77,   5.08,  90),
+        ("33",       {"SD_D1", "SD_D1_C"},      -64.77,  12.70,  90),
+        ("47k",      {"+3V3", "SD_CD"},         -64.77,  25.40,   0),
+    ],
+    "wires": [
+        [(-74.93, -68.58), (-96.52, -68.58), (-96.52, -20.32)],  # switched rail
+        [(-67.31, -73.66), (-60.96, -73.66), (-60.96, -74.93)],  # gate to R
+        [(-60.96, -73.66), (-54.61, -73.66), (-54.61, -68.58)],  # gate to FET
+        # The enable pull-down sits with its top pin on this wire, so the
+        # junction is the whole connection -- no stub to draw.
+        [(-69.85, -63.50), (-62.23, -63.50)],                    # enable
+    ],
+    "junctions": [(-60.96, -73.66), (-66.04, -63.50),
+                  (-96.52, -64.77), (-96.52, -59.69), (-96.52, -50.80),
+                  (-96.52, -43.18), (-96.52, -35.56), (-96.52, -27.94)],
+    "labels": {
+        "SD_PG": (-58.42, -73.66, 0),
+        "SD_EN_G": (-68.58, -63.50, 0),
+        "SD_VDD": (-96.52, -55.88, 0),
+    },
+}
 
 
 BLOCKS = [
@@ -93,4 +256,4 @@ BLOCKS = [
          "PG_5V", "33uH 3A", "31.6k", "31.6k", "121k"),
     buck("LM5164 (3V3)", "+3V3", "SW_3V3", "EN_3V3", "RON_3V3", "FB_3V3", "BST_3V3",
          "RAMP_3V3", "PG_3V3", "22uH 3A", "20.5k", "57.6k", "95.3k"),
-]
+] + [channel(n) for n in (1, 2, 3, 4)] + [CAN, SDCARD]
