@@ -228,11 +228,37 @@ def zone_for(part, sheet_name):
 
 # ------------------------------------------------------------------ build ----
 
+# Footprints whose own 3D model KiCad does not ship, and a part of the same
+# class to stand in.  This is cosmetic only -- no 3D model reaches fab -- but
+# without one the part is simply absent from a render, and a USB-C port you
+# cannot see in the board plot is a USB-C port nobody checks the direction of.
+MODEL_SUBS = {
+    "USB_C_Receptacle_HRO_TYPE-C-31-M-12":
+        ("Connector_USB.3dshapes/"
+         "USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal.step"),
+}
+
+
+def substitute_model(fp, name):
+    """Point a modelless footprint at a stand-in of the same class."""
+    path = MODEL_SUBS.get(name)
+    if path is None:
+        return
+    models = fp.Models()
+    while len(models):
+        models.pop()
+    m = pcbnew.FP_3DMODEL()
+    m.m_Filename = "${KICAD9_3DMODEL_DIR}/" + path
+    m.m_Show = True
+    models.push_back(m)
+
+
 def load_footprint(fpid):
     lib, name = fpid.split(":", 1)
     fp = pcbnew.FootprintLoad(lib_path(lib), name)
     if fp is None:
         raise SystemExit("footprint not found: " + fpid)
+    substitute_model(fp, name)
     return fp
 
 

@@ -383,6 +383,7 @@ resistors (commodity at LCSC).
 | `gen/tidy_silk.py` | Shrinks and re-places reference designators; no copper |
 | `gen/netclasses.py` | Per-net track and via sizes, read from the project file |
 | `gen/export_fab.py` | Gerbers, drill, JLC assembly BOM and position files |
+| `gen/export_plots.py` | Rebuilds everything under `plots/` — run it after any change |
 | `gen/route_bucks.py` | Places buck islands + routes SW/VIN critical copper |
 | `esp32s3-can-sd-logger.kicad_pcb` | Generated 4-layer board, fully placed and routed |
 | `footprints/esp32autosport.pretty` | Project footprints (TDK ACT45B CAN choke) |
