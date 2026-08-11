@@ -11,15 +11,18 @@ of truth: this script imports them, loads each part's real footprint from the
 installed KiCad libraries (or the project library), assigns every pad its
 net, and places parts into functional zones:
 
-  - left edge: sensor harness (J8) and power/CAN harness (J1)
+  - left edge: sensor harness (J10) and power/CAN harness (J1)
   - top: analog front end + ADS1115, ESP32 module with the antenna over a
     copper keepout at the top edge
   - right edge: USB-C and microSD for bench access, buttons and LEDs
-  - bottom strip: battery front end, then the 5V and 3V3 bucks
+  - middle: the two stacked buck islands
+  - bottom edge: battery front end, and the UART0 / I2C / rail / WS2812
+    headers
   - inner layers: solid GND plane (In1) and 3V3 plane (In2)
 
-Output is placed-but-unrouted: run DRC (gen/validate_pcb.py) to confirm the
-placement is legal, then route interactively.
+Output is placed but unrouted; gen/build_board.py runs this as stage 1 and
+carries on through routing. The netclasses live in the .kicad_pro and are
+preserved across this script's save -- see read_net_settings() below.
 """
 
 import json

@@ -32,7 +32,7 @@ order should be a small prototype run.**
 | Analog in | 4 channels, solder-jumper divider (0–3.3 V / 0–5 V / 0–16 V) + optional pull-up bias, shared by the ESP32 ADC and a 16-bit ADS1115 |
 | Extras | Battery voltage monitor, USB-C (native USB), I²C/Qwiic, UART0, SPI breakout, WS2812 5 V DIN header, spare-IO header |
 | Rails | +5 V @ 1 A, +3V3 @ 1 A, +5 V sensor excitation (separately fused) |
-| Board area | 168 component instances, 87 distinct BOM lines |
+| Parts | 168 component instances, 87 distinct BOM lines, all surface-mount except 8 through-hole connectors |
 
 ---
 
@@ -129,11 +129,28 @@ AINn_IN ──[1k series]──┬─────────[10k]────�
 
 ### Jumper matrix
 
-| RANGE | BYPASS | Input range | At the ADC | Typical sensor |
-|---|---|---|---|---|
-| open | **closed** | 0–3.3 V | 1:1 | 3.3 V-native sensor, ratiometric output |
-| **A** | open | 0–5.0 V | ≈2.88 V at 5.0 V in | MAP, TPS, wideband AFR, most 5 V sensors |
-| **B** | open | 0–16 V | ≈2.68 V at 16.0 V in | Battery-referenced signals, 12 V switch inputs |
+| RANGE | BYPASS | Input range | Ratio | At the ADC | Clips at | Typical sensor |
+|---|---|---|---|---|---|---|
+| open | **closed** | 0–3.3 V | 1.0000 | 3.300 V at 3.3 V in | 3.10 V in | 3.3 V-native sensor, ratiometric output |
+| **A** | open | 0–5.0 V | 0.5769 | 2.885 V at 5.0 V in | 5.37 V in | MAP, TPS, wideband AFR, most 5 V sensors |
+| **B** | open | 0–16 V | 0.1673 | 2.677 V at 16.0 V in | 18.53 V in | Battery-referenced signals, 12 V switch inputs |
+
+The upper leg is the 1 k series resistor plus the 10 k, so 11 k against 15 k
+gives 15/26 = 0.5769 on the 5 V range and 2.21/13.21 = 0.1673 on the 16 V one.
+
+**These deliberately do not divide to 3.3 V.** The ESP32-S3 ADC tops out near
+3.10 V at 12 dB attenuation, and a divider scaled to land exactly there has no
+margin: a 5 V sensor rail is rarely exactly 5.000 V, and anything that
+overshoots clips silently at full scale — which reads as a plausible-but-wrong
+value rather than an obvious fault. At 0.5769 a 5 V channel does not clip until
+5.37 V in. The 1:1 mode is the exception and has no headroom by design; it
+assumes a sensor that genuinely cannot exceed 3.3 V. The BAT54S clamps protect
+the pin either way, but clamping is protection, not measurement.
+
+Source impedance at the ADC node is 11 k ∥ 15 k = **6.35 kΩ** on the 5 V range
+(1.84 kΩ on the 16 V range). With the 100 nF filter cap that puts the −3 dB
+point at about 250 Hz — ideal for AFR, temperature and pressure, and the limit
+if you ever want something fast on a channel.
 
 `PULLUP` is independent of the above: closing it puts 2.49 kΩ to `+5VS` on the
 input node, turning the channel into a bias network for **2-wire NTC sensors**
@@ -153,24 +170,30 @@ slow-and-accurate (up to 860 SPS) on the ADS1115. The divider resistors are
 and the note in the schematic records that the 1 k series resistor is part of
 the divider chain — the exact scale factor is a firmware calibration constant.
 
-`R62`/`R63` divide `+VBAT` by 11 onto `GPIO6` for battery-voltage logging:
-14.0 V reads 1.27 V, and the 36 V top of the input range reads 3.27 V.
+`R63` (100 k) and `R64` (10 k) divide `+VBAT` by 11 onto `GPIO6` for
+battery-voltage logging: 14.0 V reads 1.27 V, and the 36 V top of the input
+range reads 3.27 V.
 
 ---
 
 ## 4. CAN
 
-`U6` is a TJA1051T/3 — 5 V bus drive with a separate `VIO` pin tied to +3V3, so
-the ESP32 sees 3.3 V logic with no level shifter. `S` is pulled low by `R39` so
-the transceiver comes up in normal mode with the MCU still in reset; `GPIO21`
-can raise it for silent (listen-only) sniffing.
+`U7` is a TJA1051T/3 — 5 V bus drive with a separate `VIO` pin tied to +3V3, so
+the ESP32 sees 3.3 V logic with no level shifter. `S` is pulled low by `R40`
+(10 k) so the transceiver comes up in normal mode with the MCU still in reset;
+`GPIO21` can raise it for silent (listen-only) sniffing. `CAN_TX` has no
+external pull — the TJA1051 pulls TXD high internally, so a floating pin at
+boot is recessive and a bare board cannot jam the bus.
 
 Bus side, in order from the transceiver out:
 
-- `L3` common-mode choke (Würth WE-SL2)
-- Split termination: two 60.4 Ω in series with `C27` 4.7 nF to ground at the
-  midpoint. Split termination beats a single 120 Ω resistor because it gives
-  the common-mode noise somewhere to go instead of reflecting it.
+- `L3` common-mode choke — TDK ACT45B-510-2P-TL003, 51 µH, AEC-Q200. The
+  footprint is project-local (`footprints/esp32autosport.pretty`) and its pads
+  are renumbered so the symbol's winding 1–2 maps to the package.
+- Split termination: `R41`/`R42`, two 60.4 Ω in series with `C28` 4.7 nF to
+  ground at the midpoint. Split termination beats a single 120 Ω resistor
+  because it gives the common-mode noise somewhere to go instead of
+  reflecting it.
 - `JP1` in series with the top half — **bridged by default**, matching the
   Autosport Labs convention of shipping terminated. Cut the trace when the
   board is a mid-bus node rather than an end node.
@@ -283,14 +306,29 @@ Two more issues surfaced while reading the datasheet, both fixed:
    onboard ADS1115 (16-bit, I²C), now shares the four conditioned input
    nodes, and the divider resistors are 0.1 % thin-film. See §3.
 
+6. ~~Layout rules~~ — the board is laid out now (§9). The switching-regulator
+   rules this item called for are all in `gen/generate_pcb.py` and
+   `gen/route_bucks.py` as fixed placements: tight input-cap loops on
+   `U2`/`U3` with `C4` at the VIN pin, a solid GND plane under the whole
+   ideal-diode block, and the CAN choke beside `J1`.
+
 Still open for a second pair of eyes:
 
-6. `+5VS` accuracy (§2) if ratiometric sensors are used. (AFR is absolute, not
+7. `+5VS` accuracy (§2) if ratiometric sensors are used. (AFR is absolute, not
    ratiometric, so this does not affect the wideband channel.)
-7. This is a schematic, not a layout. The usual switching-regulator rules
-   apply: tight input-cap loops on `U2`/`U3`, `C4` right at the pin, ground
-   pour under the ideal-diode block, CAN pair routed as a differential pair
-   with the choke close to the connector.
+8. **Nothing has been fabricated.** Every check here is a software check —
+   ERC, DRC, datasheet review, sourcing. No one has powered one on.
+
+Found later, during the pin audit (§6), and worth knowing rather than fixing:
+
+9. The WS2812 buffer input floats at boot. `GPIO48` reaches `U6` pin 2 through
+   a 33 Ω series resistor with no pull-down, so that CMOS input is undefined
+   from power-on until firmware drives it — a brief random flicker on the
+   strip and a milliamp or so of shoot-through in `U6`. Harmless, and cheaper
+   to fix in firmware (drive `GPIO48` low first) than to respin for.
+10. `J7` (Spare IO) has three signals and no ground pin. Use `J8`'s ground two
+    headers along. Also note all three of its pins are strapping pins — see
+    §6.
 
 ### Sourcing (JLCPCB assembly)
 
@@ -303,11 +341,11 @@ were checked against the LCSC catalog (2026-08):
 | Buck ×2 | LM5164DDAR | C477928 | Non-automotive variant — the Q1 is backordered at DigiKey and nearly dry at Mouser; same silicon, minus AEC-Q100 |
 | Ideal-diode ctrl | LM74700QDBVRQ1 | C2941042 | In stock (~$0.72) |
 | Reverse-batt FET | IPD068N10N3G | C88066 | Replaces PSMN4R3-100BSE, **which does not exist** (nearest real Nexperia part is a D2PAK); DPAK, drops into the same footprint, 6.8 mΩ costs ~3 mV at load |
-| CAN transceiver | TJA1051T/3/1J | C38695 | NXP original, in stock |
+| CAN transceiver | TJA1051T/3 | C38695 | NXP original, in stock; the BOM carries the `,118` reel suffix |
 | Precision ADC | ADS1115IDGSR | C37593 | Non-automotive variant — the Q1 needs a manufacturer quote at DigiKey |
 | WS2812 buffer | SN74AHCT1G125DBVR | C7975 | 5 V DIN driver for the shift-light header |
 
-Still to pick from the live JLC catalog at layout time (generic, many options):
+Still to pick from the live JLC catalog at order time (generic, many options):
 the two buck inductors (33 µH / 22 µH shielded molded, ≥ 2 A Isat — Coilcraft
 XAL7030 is the reference part but LCSC stock is thin), the 100 µF 100 V bulk
 electrolytic (Nichicon UCD is the reference), and the 0.1 % thin-film divider
@@ -320,7 +358,7 @@ resistors (commodity at LCSC).
 
 | Path | What |
 |---|---|
-| `esp32s3-can-sd-logger.kicad_pro` | KiCad 7/8 project (netclasses preset for Power and CAN) |
+| `esp32s3-can-sd-logger.kicad_pro` | KiCad project. **Owns the netclasses** — Power 0.5 mm / CAN 0.25 mm — and the 0.2 mm min-drill rule |
 | `esp32s3-can-sd-logger.kicad_sch` | Root sheet |
 | `power.kicad_sch` | Protection and rails |
 | `mcu.kicad_sch` | ESP32-S3, USB-C, headers |
@@ -345,8 +383,8 @@ resistors (commodity at LCSC).
 | `gen/route_bucks.py` | Places buck islands + routes SW/VIN critical copper |
 | `esp32s3-can-sd-logger.kicad_pcb` | Generated 4-layer board, fully placed and routed |
 | `footprints/esp32autosport.pretty` | Project footprints (TDK ACT45B CAN choke) |
-| `plots/board-placement.png` | Render of the placed board |
-| `plots/board-routed.png` | Render of the finished board |
+| `plots/board-routed.png` | Render of the finished board, top |
+| `plots/board-back.png` | Render of the finished board, bottom — routing only, no parts |
 | `fab/` | Gerbers, drill, JLC BOM and pick-and-place (generated) |
 
 ### KiCad version
@@ -427,8 +465,8 @@ python gen/build_board.py --freerouting freerouting.jar
 stackup, 0.2 mm minimum drill (the LM5164 thermal vias), 0.5 mm copper-to-edge
 enforced by a rule-area band around the perimeter.
 
-Three things in that pipeline are worth knowing, because all three were
-learned the hard way:
+Five things in that pipeline are worth knowing, because every one of them
+was learned the hard way:
 
 **The inner layers must be declared `power` in the DSN.** KiCad exports every
 copper layer as `signal`, so an autorouter cheerfully runs traces straight
@@ -439,9 +477,10 @@ layer declarations, and routing then stays on the outer layers where it
 belongs.
 
 **Plane pads are stitched before routing, not after.** A pad on GND or +3V3
-does not want a routed track, it wants a via next to it; doing all 117 of them
+does not want a routed track, it wants a via next to it; doing all 113 of them
 up front means the router treats them as obstacles and has only signals left to
-solve. `stitch_planes.py` places each via with real point-to-rectangle and
+solve. 110 get a via; the three that do not are the exposed thermal pads of
+`U2`, `U3` and the module, which the pour bonds to directly. `stitch_planes.py` places each via with real point-to-rectangle and
 point-to-segment distance checks -- bounding boxes are far too pessimistic in a
 dense field and refuse room that is really there.
 
@@ -526,14 +565,13 @@ conflict appears. Edit `gen/generate_schematic.py` only; then
 `python gen/generate_schematic.py && python gen/validate.py`.
 
 **The board is finished.** 341 of 341 connections routed, **zero DRC errors,
-zero unconnected**: 1432 tracks, 249 vias, solid GND and +3V3 pours, every
-net at its netclass width. Rebuild
-it any time with `python gen/build_board.py --freerouting freerouting.jar` —
+zero unconnected**: 1432 tracks, 249 vias, solid GND and +3V3 pours, every net
+at its netclass width. Rebuild it any time with `python gen/build_board.py --freerouting freerouting.jar` —
 placement, plane vias and the buck loops are deterministic, so the only thing
 that varies between runs is the autorouter's solution for the signals, and
 stage 8 closes out whatever it leaves.
 
-The 100 remaining DRC findings are all `warning`-severity silkscreen overlap
+The 105 remaining DRC findings are all `warning`-severity silkscreen overlap
 on a board with 168 parts in 84 x 74 mm. Reference designators are at 0.8 mm,
 the floor for both the board's own text rule and JLC's silkscreen, and values
 are hidden. Nothing here affects fabrication or assembly.
