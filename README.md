@@ -592,10 +592,20 @@ It will read 84 x 74 mm and 4 layers off the files.
 | Layers | 4 | detected automatically |
 | PCB Qty | 5 | the cheapest quantity, and this is a first run |
 | Thickness | 1.6 mm | what the stackup assumes |
-| Impedance control | Yes → **JLC04161H-7628** | the stackup the board is designed to |
+| Impedance control | **No** | nothing here is fast enough to need it — see below. Leaving it off also keeps you on JLC's default 4-layer 1.6 mm stackup, JLC04161H-7628, which is what the board is built to anyway |
 | Surface finish | **ENIG** | worth the few extra dollars — HASL leaves an uneven surface, and the USB-C and the module are 0.5 mm pitch |
 | Outer copper | 1 oz | |
 | Remove order number | "Specify a location" or Yes | otherwise they print their job number wherever they like |
+
+**Why no impedance control.** It is the option people reach for on a
+4-layer board, and this one does not need it. The ESP32-S3's USB is
+**full-speed only** (12 Mbps, no high-speed PHY), and at those edge rates a
+trace has to run past roughly 100 mm before it behaves like a transmission
+line — `USB_DM` is 30 mm and `USB_DP` 27 mm. CAN at 1 Mbps has edges measured
+in tens of nanoseconds against a 49 mm run, and the SD bus is 40 MHz over
+10 mm with 33 Ω series damping already fitted. There is no RF on the board;
+the antenna is inside the module. Turning impedance control on would cost more
+and pin the stackup you were going to get regardless.
 
 **3 — Turn on assembly.** Switch *PCB Assembly* on. Assembly side **Top**,
 quantity 5, tooling holes *Added by JLCPCB*. Every part is on the top face.
