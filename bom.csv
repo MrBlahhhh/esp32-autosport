@@ -83,6 +83,6 @@ Qty (1 board),Qty (10 boards),References,Value,Footprint,Manufacturer part numbe
 1,10,U3,LM5164 (3V3),Package_SO:SOIC-8-1EP_3.9x4.9mm_P1.27mm_EP2.95x4.9mm_Mask2.71x3.4mm_ThermalVias,LM5164DDAR,C477928,Second buck straight off the battery: a shorted 5V sensor harness cannot brown out the MCU
 1,10,U4,ESP32-S3-WROOM-1-N16R8,RF_Module:ESP32-S3-WROOM-1,ESP32-S3-WROOM-1-N16R8,C2913202,16MB flash / 8MB octal PSRAM. Pins 28-30 (IO35/36/37) are consumed by the octal PSRAM and must stay unconnected. IO3/IO45/IO46 on the spare header are strapping pins -- leave floating at boot.
 1,10,U5,USBLC6-2SC6,Package_TO_SOT_SMD:SOT-23-6,USBLC6-2SC6,C7519,USB ESD clamp
-1,10,U6,74AHCT1G125,Package_TO_SOT_SMD:SOT-23-5,SN74AHCT1G125DBVR,C7975,"5 V buffer so WS2812 DIN is a real 5 V rail, not 3.3 V hoping"
+1,10,U6,74AHCT1G125,Package_TO_SOT_SMD:SOT-23-5,SN74AHCT1G125DBVR,,"5 V buffer so WS2812 DIN is a real 5 V rail, not 3.3 V hoping"
 1,10,U7,TJA1051T/3,Package_SO:SOIC-8_3.9x4.9mm_P1.27mm,"TJA1051T/3,118",C58988,"5V bus drive with a 3.3V VIO pin, so no level shifting to the ESP32"
 1,10,U8,ADS1115,Package_SO:VSSOP-10_3x3mm_P0.5mm,ADS1115IDGSR,C37593,16-bit 4-ch I2C ADC for AFR-grade accuracy; ADDR to GND = 0x48

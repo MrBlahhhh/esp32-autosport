@@ -573,7 +573,11 @@ R(mc, "33", "LED_DIN_MCU", "LED_DIN_A",
   note="Edge-rate limit into the level shifter")
 part(mc, "U", "74xGxx:74AHCT1G125", "74AHCT1G125", SOT235,
      {"1": "GND", "2": "LED_DIN_A", "3": "GND", "4": "LED_DIN", "5": "+5V"},
-     "SN74AHCT1G125DBVR", lcsc="C7975",
+     # NOT C7975 -- that is an LMV324IPWRG4 quad op-amp in TSSOP-14. JLC
+     # resolved our part number to it and warned that the footprint did
+     # not match SOT-23-5, which is how the error surfaced. Left blank so
+     # the matcher works from the MPN; fill it in once verified.
+     "SN74AHCT1G125DBVR", lcsc="",
      note="5 V buffer so WS2812 DIN is a real 5 V rail, not 3.3 V hoping")
 C(mc, "100nF 16V", "+5V", "GND", note="AHCT decoupling")
 part(mc, "PF", "Device:Polyfuse", "0.5A hold", "Resistor_SMD:R_1206_3216Metric",

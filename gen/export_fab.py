@@ -160,7 +160,13 @@ def bom():
             # part number when there is one. Matching on a bare value is
             # how "40V 1A" became a mechanical limit switch and "WS2812"
             # became an actual WS2812 LED.
-            comment = p["mpn"] or p["value"]
+            #
+            # Bare part number only, though. The tables here store the
+            # maker alongside it ("Littelfuse SMCJ33A"), JLC strips the
+            # space, and "LittelfuseSMCJ33A" matches nothing at all --
+            # eleven lines that had matched perfectly well on the plain
+            # value went to "no matches" when the maker was left on.
+            comment = (p["mpn"] or p["value"]).split()[-1] if p["mpn"]                 else p["value"]
             key = (comment, p["footprint"], p["lcsc"])
             groups.setdefault(key, []).append(p["ref"])
     out = os.path.join(FAB, "bom.csv")
