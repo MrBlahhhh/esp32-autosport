@@ -923,6 +923,55 @@ WIRE_GAP = 8.89          # host pin to satellite pin, with room for the
                          # net name to sit on the wire between them
 
 
+def match_part(sh, value, nets, taken):
+    """Find a part on this sheet by value and the exact nets it touches.
+
+    Same identification the PCB placement tables use, and for the same
+    reason: it survives reference renumbering, which happens on every run.
+    """
+    for p in sh["parts"]:
+        if p["ref"] in taken or p["value"] != value:
+            continue
+        if nets is not None and set(p["pins"].values()) != set(nets):
+            continue
+        taken.add(p["ref"])
+        return p
+    return None
+
+
+def apply_blocks(libs, sh):
+    """Place the hand-drawn blocks that live on this sheet.
+
+    Returns the parts the blocks own, so the column packer leaves them
+    alone -- a block travels as one drawing, not as loose symbols.
+    """
+    import sch_blocks
+    owned, taken, placed = {}, set(), []
+    for blk in sch_blocks.BLOCKS:
+        if blk["sheet"] != sh["name"]:
+            continue
+        anchor = match_part(sh, blk["anchor"][0], blk["anchor"][1], taken)
+        if anchor is None:
+            continue
+        members = []
+        for value, nets, dx, dy, rot in blk["parts"]:
+            part = match_part(sh, value, nets, taken)
+            if part is None:
+                raise SystemExit(
+                    "block %r wants a %r on %s and this sheet has none left"
+                    % (blk["anchor"][0], value, sorted(nets or [])))
+            part["theta"] = rot
+            part["ext"] = symbol_extent(libs, part["lib_id"], rot)
+            part["_up"] = part["_down"] = 0.0
+            part["_block"] = True
+            members.append((part, dx, dy))
+        placed.append({"blk": blk, "anchor": anchor, "members": members})
+        for part, dx, dy in members:
+            owned[part["ref"]] = (anchor, dx, dy)
+    sh["_blocks"] = placed
+    return owned
+
+
 def orient_two_pin(libs, p, num, want):
     """Rotation that makes pin `num` of a two-pin part face `want`."""
     for theta in (0, 90, 180, 270):
@@ -935,14 +984,22 @@ def orient_two_pin(libs, p, num, want):
     return p.get("theta", 0)
 
 
-def attach_satellites(libs, sh):
+def attach_satellites(libs, sh, owned=()):
     """Park each two-pin partner right on the pin it serves.
 
     The satellite sits WIRE_GAP beyond the host pin, facing back at it, so
     the connection is a single straight wire rather than a pair of labels.
+
+    Parts a hand-drawn block already owns are off limits. This runs after
+    apply_blocks and writes position and rotation last, so without the
+    guard it quietly re-parked block members -- the 5 V bootstrap cap ended
+    up rotated and 6 mm from where the block drew its wire, and the only
+    symptom was two nets KiCad could no longer name.
     """
     sats = {}
     for pa, na, pb, nb, net in wire_pairs(sh):
+        if pa["ref"] in owned or pb["ref"] in owned:
+            continue
         host, hnum, sat, snum = pa, na, pb, nb
         if len(pa["pins"]) < len(pb["pins"]):
             host, hnum, sat, snum = pb, nb, pa, na
@@ -999,8 +1056,17 @@ def place(libs):
                     down = STUB + 3.81
             p["_up"], p["_down"] = up, down
 
+        blocks = apply_blocks(libs, sh)
+        # Grow the anchor so the packer reserves room for the whole drawing.
+        for ref, (anchor, dx, dy) in blocks.items():
+            part = next(q for q in sh["parts"] if q["ref"] == ref)
+            px0, px1, py0, py1 = part["ext"]
+            ax0, ax1, ay0, ay1 = anchor["ext"]
+            anchor["ext"] = (min(ax0, px0 + dx), max(ax1, px1 + dx),
+                             min(ay0, py0 + dy), max(ay1, py1 + dy))
+
         # Satellites ride with their host, so they are not packed separately.
-        sats = attach_satellites(libs, sh)
+        sats = attach_satellites(libs, sh, blocks)
         for ref, info in sats.items():
             host = next(q for q in sh["parts"] if q["ref"] == info["host"])
             sx0, sx1, sy0, sy1 = next(q for q in sh["parts"]
@@ -1012,7 +1078,7 @@ def place(libs):
         columns, col, y = [], [], MARGIN_TOP
         usable = PAGE_H - MARGIN_TOP - MARGIN_BOT
         for p in sh["parts"]:
-            if p["ref"] in sats:
+            if p["ref"] in sats or p["ref"] in blocks:
                 continue
             x0, x1, y0, y1 = p["ext"]
             # Leave room for the reference and value text above and below the
@@ -1036,6 +1102,9 @@ def place(libs):
                 p["x"] = snap(cx)
                 p["y"] = snap(p["_y"] - p["ext"][2])
             x = cx + right + LABEL_ALLOWANCE + 6.35
+        for ref, (anchor, dx, dy) in blocks.items():
+            part = next(q for q in sh["parts"] if q["ref"] == ref)
+            part["x"], part["y"] = snap(anchor["x"] + dx), snap(anchor["y"] + dy)
         # Satellites take their position from the host they hang off.
         for ref, info in sats.items():
             host = next(q for q in sh["parts"] if q["ref"] == info["host"])
@@ -1079,30 +1148,44 @@ def emit_symbol(libs, sh, p, sheet_uuid):
     up, down = p.get("_up", 0.0), p.get("_down", 0.0)
     ref_y = p["y"] + y0 - 2.0 - up
     val_y = p["y"] + y1 + 2.0 + down
+    ref_x = val_x = p["x"]
+    # Inside a hand-drawn block the parts sit a few millimetres apart, and
+    # the packer's generous text offsets then print one part's value through
+    # the next part's body. Tuck the fields alongside instead, the way they
+    # sit in a schematic drawn by hand: beside a vertical part, above and
+    # below one lying on its side.
+    if p.get("_block"):
+        if x1 - x0 > y1 - y0:
+            ref_y, val_y = p["y"] + y0 - 1.27, p["y"] + y1 + 2.03
+        else:
+            ref_x = val_x = p["x"] + x1 + 1.27
+            ref_y, val_y = p["y"] - 1.27, p["y"] + 1.78
     # A power symbol's reference (#PWR003) is noise -- the rail name in the
     # Value field is the label. KiCad hides these by convention and so do we,
     # along with the flags'.
     anon = p["prefix"].startswith("#")
-    props = [("Reference", p["ref"], ref_y, anon),
-             ("Value", p["value"], val_y, p["lib_id"] == "power:PWR_FLAG"),
-             ("Footprint", p["footprint"], val_y, True),
-             ("Datasheet", "~", val_y, True)]
+    props = [("Reference", p["ref"], ref_x, ref_y, anon),
+             ("Value", p["value"], val_x, val_y, p["lib_id"] == "power:PWR_FLAG"),
+             ("Footprint", p["footprint"], val_x, val_y, True),
+             ("Datasheet", "~", val_x, val_y, True)]
     if p.get("voltage"):
-        props.append(("Voltage", p["voltage"], val_y, True))
+        props.append(("Voltage", p["voltage"], val_x, val_y, True))
     if p.get("tolerance"):
-        props.append(("Tolerance", p["tolerance"], val_y, True))
+        props.append(("Tolerance", p["tolerance"], val_x, val_y, True))
     if p["mpn"]:
-        props.append(("MPN", p["mpn"], val_y, True))
+        props.append(("MPN", p["mpn"], val_x, val_y, True))
     if p["note"]:
-        props.append(("Note", p["note"], val_y, True))
+        props.append(("Note", p["note"], val_x, val_y, True))
     # A property's angle is applied *on top of* the symbol's rotation, so a
     # rotated part needs its text counter-rotated to stay horizontal.
     text_angle = (360 - p["theta"]) % 360
-    for name, value, py, hide in props:
+    just = " (justify left)" if ref_x != p["x"] else ""
+    for name, value, px, py, hide in props:
         lines.append(
             '    (property "%s" "%s" (at %s %s %d)\n      %s\n    )'
-            % (name, value.replace('"', "'"), mm(p["x"]), mm(py), text_angle,
-               FONT % ("hide" if hide else ""))
+            % (name, value.replace('"', "'"), mm(px), mm(py), text_angle,
+               "(effects (font (size 1.27 1.27))%s %s)"
+               % (just, "hide" if hide else ""))
         )
     for num, _, _, _, _, _ in libs.pins(p["lib_id"]):
         lines.append('    (pin "%s" (uuid %s))'
@@ -1113,6 +1196,17 @@ def emit_symbol(libs, sh, p, sheet_uuid):
     )
     lines.append("  )")
     return "\n".join(lines)
+
+
+def wire_seg(x1, y1, x2, y2, uid):
+    return ("  (wire (pts (xy %s %s) (xy %s %s))\n"
+            "    (stroke (width 0) (type default))\n"
+            "    (uuid %s)\n  )" % (mm(x1), mm(y1), mm(x2), mm(y2), uid))
+
+
+def junction(x, y, uid):
+    return ("  (junction (at %s %s) (diameter 0) (color 0 0 0 0)\n"
+            "    (uuid %s)\n  )" % (mm(x), mm(y), uid))
 
 
 HIER_LABEL = (
@@ -1148,7 +1242,7 @@ def crossing_nets(sh):
 
 
 LOCAL_LABEL = (
-    '  (label "%s" (at %s %s 0)\n'
+    '  (label "%s" (at %s %s %d)\n'
     "    (effects (font (size 1.27 1.27)) (justify left bottom))\n"
     "    (uuid %s)\n  )"
 )
@@ -1194,6 +1288,50 @@ def emit_sheet(libs, sh, sheet_uuid, page):
     crossing = set(crossing_nets(sh))
     pwr_n = [PWR_COUNTER[0]]
 
+    # Hand-drawn blocks: their wires are the connection, so any net living
+    # entirely inside a block loses its pin labels and keeps one name on the
+    # wire. A net that also reaches outside (PG_5V reaches a test point) is
+    # left alone -- the block does not own all of it.
+    blk_nets = set()
+    for entry in sh.get("_blocks", []):
+        blk, anchor = entry["blk"], entry["anchor"]
+        ax, ay = anchor["x"], anchor["y"]
+        inside = {anchor["ref"]} | {p["ref"] for p, _, _ in entry["members"]}
+        # A wire must END at every junction on it. KiCad's own editor splits
+        # wires when a junction is dropped, and its netlister relies on that:
+        # a junction sitting mid-segment left the far half of the segment on
+        # a net of its own -- SW stopped at the bootstrap cap and never
+        # reached the inductor. Split here so the block tables stay readable.
+        for i, poly in enumerate(blk["wires"]):
+            for j, ((x1, y1), (x2, y2)) in enumerate(zip(poly, poly[1:])):
+                cuts = [(jx, jy) for jx, jy in blk.get("junctions", [])
+                        if min(x1, x2) <= jx <= max(x1, x2)
+                        and min(y1, y2) <= jy <= max(y1, y2)
+                        and (jx, jy) not in ((x1, y1), (x2, y2))]
+                cuts.sort(key=lambda q: (q[0] - x1) ** 2 + (q[1] - y1) ** 2)
+                pts = [(x1, y1)] + cuts + [(x2, y2)]
+                for k, ((sx, sy), (ex, ey)) in enumerate(zip(pts, pts[1:])):
+                    wires.append(wire_seg(ax + sx, ay + sy, ax + ex, ay + ey,
+                                          det_uuid("bw:%s:%s:%d:%d:%d"
+                                                   % (sh["file"], anchor["ref"],
+                                                      i, j, k))))
+        for k, (jx, jy) in enumerate(blk.get("junctions", [])):
+            wires.append(junction(ax + jx, ay + jy,
+                                  det_uuid("bj:%s:%s:%d"
+                                           % (sh["file"], anchor["ref"], k))))
+        for net, spec in blk.get("labels", {}).items():
+            lx, ly, ang = spec if len(spec) == 3 else spec + (0,)
+            labels.append(LOCAL_LABEL % (net, mm(ax + lx), mm(ay + ly), ang,
+                                         det_uuid("bl:%s:%s" % (sh["file"], net))))
+        for net in {v for r in sh["parts"] if r["ref"] in inside
+                    for v in r["pins"].values()}:
+            if net in RAILS:
+                continue
+            holders = {p["ref"] for s2 in SHEETS for p in s2["parts"]
+                       if net in p["pins"].values()}
+            if holders <= inside:
+                blk_nets.add(net)
+
     # Satellite links become a drawn wire, and both ends lose their label:
     # the connection is on the page now, so naming it twice adds nothing.
     sats = sh.get("_sats", {})
@@ -1216,7 +1354,7 @@ def emit_sheet(libs, sh, sheet_uuid, page):
             # The anchor has to sit exactly on the wire or KiCad treats the
             # label as floating; "left bottom" lifts the text clear instead.
             LOCAL_LABEL % (info["net"], mm(hx + (sx - hx) * 0.18),
-                           mm(hy + (sy - hy) * 0.18),
+                           mm(hy + (sy - hy) * 0.18), 0,
                            det_uuid("wlbl:%s:%s" % (sh["file"], ref))))
         joined.add((info["host"], info["host_pin"]))
         joined.add((ref, info["sat_pin"]))
@@ -1236,6 +1374,8 @@ def emit_sheet(libs, sh, sheet_uuid, page):
                 continue
             if (p["ref"], num) in joined:
                 continue                   # already drawn as a wire
+            if net in blk_nets:
+                continue                   # the block's own wires carry it
             ex, ey = px + d[0] * STUB, py + d[1] * STUB
             wires.append(
                 "  (wire (pts (xy %s %s) (xy %s %s))\n"
