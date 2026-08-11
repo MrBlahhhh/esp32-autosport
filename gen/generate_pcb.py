@@ -40,7 +40,7 @@ import generate_schematic as sch  # noqa: E402
 # ------------------------------------------------------------------ setup ----
 
 BOARD_W = 84.0
-BOARD_H = 74.0
+BOARD_H = 80.0   # 74 -> 80 to house the Rev B additions
 FILLET = 3.0
 OUT = os.path.join(PROJ, "esp32s3-can-sd-logger.kicad_pcb")
 PRO = os.path.join(PROJ, "esp32s3-can-sd-logger.kicad_pro")
@@ -88,6 +88,19 @@ for pat in (r"C:\Program Files\KiCad\9.0\share\kicad\footprints",
 PROJECT_FP = os.path.join(PROJ, "footprints")
 
 
+def full_value(p):
+    """'100nF' + '100V' -> '100nF 100V'.
+
+    The schematic tables split ratings out of VALUE so review tools can
+    parse them, but the placement tables below are keyed on the rating as
+    written, which reads better and disambiguates (there are 16 V and
+    100 V 100nF parts). Reassemble for lookup only; the board's own VALUE
+    field stays bare, matching the schematic.
+    """
+    return " ".join(x for x in (p["value"], p.get("voltage", ""),
+                                p.get("tolerance", "")) if x)
+
+
 def mm(v):
     return pcbnew.FromMM(v)
 
@@ -119,10 +132,10 @@ FIXED = {
     "Hirose DM3D-SF":           (75.0, 41.0, 270),  # right edge, card out
     "value:Spare IO":           (10.0, 3.0, 90),    # top edge
     "value:SPI":                (21.7, 3.0, 90),    # top edge
-    "value:UART0":              (26.0, 71.5, 90),   # bottom edge
-    "value:I2C / Qwiic":        (41.0, 71.5, 90),
-    "value:Rail break-out":     (56.0, 71.5, 90),
-    "value:WS2812":             (70.5, 71.5, 90),   # shift-light strip
+    "value:UART0":              (26.0, 77.5, 90),   # bottom edge
+    "value:I2C / Qwiic":        (41.0, 77.5, 90),
+    "value:Rail break-out":     (56.0, 77.5, 90),
+    "value:WS2812":             (70.5, 77.5, 90),   # shift-light strip
     "value:RESET":              (78.0, 56.5, 0),    # right edge, case access
     "value:BOOT":               (78.0, 63.5, 0),
     "value:amber":              (75.5, 50.8, 0),    # status LEDs by the edge
@@ -154,6 +167,7 @@ BUCK_FIXED = [
     ("Power", "3.3nF 50V",  {"RAMP_5V", "+5V"},          (51.0, 50.8, 0)),
     ("Power", "270pF 50V",  {"RAMP_5V", "FB_5V"},        (40.5, 51.0, 0)),
     ("Power", "100k",       {"PG_5V", "+3V3"},           (44.5, 51.0, 0)),
+    ("Power", "10nF 100V",  {"EN_5V", "GND"},            (34.5, 39.9, 0)),
     ("Power", "+5V",        {"+5V"},                     (33.8, 37.4, 0)),
 
     # ---- 3V3 island: same pattern, one pitch down
@@ -165,12 +179,13 @@ BUCK_FIXED = [
     ("Power", "20.5k",      {"RON_3V3", "GND"},          (38.5, 64.0, 0)),
     ("Power", "57.6k",      {"FB_3V3", "GND"},           (42.5, 64.0, 0)),
     ("Power", "100k",       {"+3V3", "FB_3V3"},          (46.5, 64.0, 0)),
-    ("Power", "22uF 6.3V",  {"+3V3", "GND"},             (51.5, 63.6, 0)),
-    ("Power", "22uF 6.3V",  {"+3V3", "GND"},             (56.5, 63.6, 0)),
+    ("Power", "22uF 16V",   {"+3V3", "GND"},             (51.5, 63.6, 0)),
+    ("Power", "22uF 16V",   {"+3V3", "GND"},             (56.5, 63.6, 0)),
     ("Power", "100nF 16V",  {"+3V3", "GND"},             (56.5, 66.2, 0)),
     ("Power", "3.3nF 50V",  {"RAMP_3V3", "+3V3"},        (51.0, 66.6, 0)),
     ("Power", "270pF 50V",  {"RAMP_3V3", "FB_3V3"},      (40.5, 66.8, 0)),
     ("Power", "100k",       {"PG_3V3", "+3V3"},          (44.5, 66.8, 0)),
+    ("Power", "10nF 100V",  {"EN_3V3", "GND"},           (34.5, 55.7, 0)),
     ("Power", "+3V3",       {"+3V3"},                    (33.5, 68.2, 0)),
 ]
 
@@ -182,20 +197,21 @@ HOLES = [(4.0, 4.0), (4.0, 70.0), (66.0, 4.0), (80.0, 26.0)]
 ZONES = [
     # (name, rect, predicate)
     ("adc",       (43.0, 29.0,  7.5,  7.0), lambda p, n, s: p["mpn"] == "ADS1115IDGSR" or (s == "Analog Inputs" and n <= {"+3V3", "GND"})),
-    ("ch1",       ( 9.5,  7.0,  8.0, 24.0), lambda p, n, s: n & {"AIN1_A", "AIN1_PU", "AIN1_R1", "AIN1_R2", "AIN1_IN", "AIN1"}),
-    ("ch2",       (18.0,  7.0,  8.0, 24.0), lambda p, n, s: n & {"AIN2_A", "AIN2_PU", "AIN2_R1", "AIN2_R2", "AIN2_IN", "AIN2"}),
-    ("ch3",       (26.5,  7.0,  8.0, 24.0), lambda p, n, s: n & {"AIN3_A", "AIN3_PU", "AIN3_R1", "AIN3_R2", "AIN3_IN", "AIN3"}),
-    ("ch4",       (34.6,  7.0,  7.6, 24.0), lambda p, n, s: n & {"AIN4_A", "AIN4_PU", "AIN4_R1", "AIN4_R2", "AIN4_IN", "AIN4"}),
-    ("ws2812",    (59.0, 58.3, 14.2,  3.8), lambda p, n, s: n & {"LED_DIN_MCU", "LED_DIN_A", "LED_DIN", "LED_5V"}),
+    ("ch1",       ( 9.5,  7.0,  8.0, 28.0), lambda p, n, s: n & {"AIN1_A", "AIN1_PU", "AIN1_R1", "AIN1_R2", "AIN1_IN", "AIN1"}),
+    ("ch2",       (18.0,  7.0,  8.0, 28.0), lambda p, n, s: n & {"AIN2_A", "AIN2_PU", "AIN2_R1", "AIN2_R2", "AIN2_IN", "AIN2"}),
+    ("ch3",       (26.5,  7.0,  8.0, 28.0), lambda p, n, s: n & {"AIN3_A", "AIN3_PU", "AIN3_R1", "AIN3_R2", "AIN3_IN", "AIN3"}),
+    ("ch4",       (34.6,  7.0,  7.6, 28.0), lambda p, n, s: n & {"AIN4_A", "AIN4_PU", "AIN4_R1", "AIN4_R2", "AIN4_IN", "AIN4"}),
+    ("ws2812",    (57.5, 68.8, 16.0,  6.0), lambda p, n, s: n & {"LED_DIN_MCU", "LED_DIN_A", "LED_DIN", "LED_5V"}),
     ("ledr",      (78.5, 48.7,  5.0,  4.6), lambda p, n, s: n & {"LED1_A", "LED2_A"}),
-    ("usb",       (62.0, 14.2, 13.0,  8.8), lambda p, n, s: n & {"USB_DP_CON", "USB_DM_CON", "USB_CC1", "USB_CC2", "VBUS_IN", "VBUS", "USB_DP", "USB_DM"}),
+    ("usb",       (62.0, 14.2, 13.0, 10.8), lambda p, n, s: n & {"USB_DP_CON", "USB_DM_CON", "USB_CC1", "USB_CC2", "VBUS_IN", "VBUS", "USB_DP", "USB_DM"}),
     ("sdpwr",     (59.0, 49.3, 11.0,  8.5), lambda p, n, s: n & {"SD_PG", "SD_EN_G", "SD_PWR_EN"}),
     ("sd",        (49.8, 21.4, 13.2, 15.0), lambda p, n, s: s == "SD Card"),
     ("can",       ( 9.5, 28.2, 21.0, 15.0), lambda p, n, s: s == "CAN"),
-    ("sens5v",    (59.0, 62.5, 14.5,  6.9), lambda p, n, s: n & {"VSENS_F", "+5VS"} and s == "Power"),
+    ("sens5v",    (59.0, 59.8, 14.5,  6.9), lambda p, n, s: n & {"VSENS_F", "+5VS"} and s == "Power"),
     ("frontend",  ( 9.2, 43.3, 24.4, 25.0), lambda p, n, s: s == "Power" and n & {"VBAT_IN", "VBAT_F", "VBAT_FB", "GATE_RB", "VCAP", "VBAT_UVLO", "+VBAT"}),
-    ("mcu_misc",  (63.0, 23.3, 13.0,  9.7), lambda p, n, s: s == "MCU"),
-    ("pwr_misc",  (30.7, 23.9, 10.4, 12.0), lambda p, n, s: True),
+    ("strap",     (48.0, 69.6,  9.5,  4.4), lambda p, n, s: n & {"IO3", "IO45", "IO46"}),
+    ("mcu_misc",  (63.0, 25.6, 13.0, 10.0), lambda p, n, s: s == "MCU"),
+    ("pwr_misc",  ( 9.5, 69.6, 37.0,  5.4), lambda p, n, s: True),
 ]
 
 
@@ -318,8 +334,9 @@ def main():
                 continue
             netset = frozenset(p["pins"].values())
             hit = None
-            for key in ((sh["name"], p["value"], netset),
-                        (sh["name"], p["value"], None)):
+            fv = full_value(p)
+            for key in ((sh["name"], fv, netset),
+                        (sh["name"], fv, None)):
                 lst = buck_index.get(key)
                 if lst:
                     hit = lst.pop(0)
@@ -421,6 +438,34 @@ def main():
             olk.Append(mm(x), mm(y))
         board.Add(ka)
 
+    # --- footprint keepouts, promoted to board level ------------------------
+    # The microSD footprint carries keepouts for the card slot and the eject
+    # mechanism, and the module carries its RF area. Those live inside the
+    # footprint, where the Specctra export cannot see them -- so the
+    # autorouter happily ran a track through the middle of J9's card slot.
+    # Board-level rule areas do get exported, and gen/maze_route.py reads
+    # them too, so copying them out makes both routers aware.
+    promoted = 0
+    for fp in board.GetFootprints():
+        for z in list(fp.Zones()):
+            if not z.GetIsRuleArea():
+                continue
+            ka = pcbnew.ZONE(board)
+            ka.SetIsRuleArea(True)
+            ka.SetDoNotAllowCopperPour(True)
+            ka.SetDoNotAllowTracks(True)
+            ka.SetDoNotAllowVias(True)
+            ka.SetLayerSet(z.GetLayerSet())
+            src, dst = z.Outline(), ka.Outline()
+            for i in range(src.OutlineCount()):
+                dst.NewOutline()
+                oc = src.Outline(i)
+                for j in range(oc.PointCount()):
+                    pt_ = oc.CPoint(j)
+                    dst.Append(pt_.x, pt_.y)
+            board.Add(ka)
+            promoted += 1
+
     # --- inner-layer planes ------------------------------------------------
     def plane(layer, netname):
         z = pcbnew.ZONE(board)
@@ -452,6 +497,7 @@ def main():
     n_fp = len(list(board.GetFootprints()))
     print("footprints  : %d (%d fixed, %d holes)" % (n_fp, len(fixed_parts), len(hole_parts)))
     print("nets        : %d" % len(nets))
+    print("keepouts    : %d promoted from footprints" % promoted)
     for name, count, used, zh, overflow in report:
         flag = "  OVERFLOW" if overflow else ""
         print("  zone %-9s %2d parts, %5.1f/%4.1f mm used%s" % (name, count, used, zh, flag))

@@ -181,11 +181,15 @@ def main():
             want[f[0]] = {tuple(x.split(".", 1)) for x in f[1:]}
 
         for name, nodes in sorted(want.items()):
-            # PWR_FLAG symbols are board-excluded, so KiCad drops them as nodes.
+            # PWR_FLAG and power symbols carry a "#" reference: they are
+            # board-excluded, exist only to name a rail or satisfy ERC, and
+            # are not connectivity. Strip them from both sides so the
+            # comparison is over real component pins either way.
             nodes = {n for n in nodes if not n[0].startswith("#")}
+            mine = {n for n in got.get(name, set()) if not n[0].startswith("#")}
             if name not in got:
                 failures.append("net %s missing from KiCad's netlist" % name)
-            elif got[name] != nodes:
+            elif mine != nodes:
                 failures.append(
                     "net %s differs\n    intended: %s\n    kicad   : %s"
                     % (name, sorted(nodes), sorted(got[name])))

@@ -278,8 +278,49 @@ def pin_geometry(local_x, local_y, angle, theta):
     return off, d
 
 
+# Rails get a power symbol rather than a net-name label. It is what every
+# schematic does, it makes a rail readable at a glance, and it removes the
+# single largest source of labels on the page -- GND alone accounted for
+# hundreds. Where KiCad has no stock symbol for a rail (+VBAT, +5VS, SD_VDD)
+# a generic one is instantiated and its Value overridden: for a power symbol
+# KiCad takes the net name from the Value field, so the rail is named
+# correctly and drawn correctly. gen/validate.py re-extracts the netlist
+# through KiCad and compares it node-for-node, so if that were wrong the
+# build would fail rather than quietly merge two rails.
+RAILS = {
+    "GND":    ("power:GND",   "GND"),
+    "+3V3":   ("power:+3V3",  "+3V3"),
+    "+5V":    ("power:+5V",   "+5V"),
+    "VBUS":   ("power:VBUS",  "VBUS"),
+    "+VBAT":  ("power:+BATT", "+VBAT"),
+    "+5VS":   ("power:+BATT", "+5VS"),
+    "SD_VDD": ("power:+BATT", "SD_VDD"),
+}
+
+
+def power_placement(libs, lib_id, ex, ey, d):
+    """Where to put a power symbol so its pin lands at (ex, ey) facing -d."""
+    angle = libs.pins(lib_id)[0][4]
+    want = (-d[0], -d[1])
+    for theta in (0, 90, 180, 270):
+        off, ds = pin_geometry(0.0, 0.0, angle, theta)
+        if ds == want:
+            return snap(ex - off[0]), snap(ey - off[1]), theta
+    return snap(ex), snap(ey), 0
+
+
 def label_rotation(direction):
     return {(1, 0): 0, (-1, 0): 180, (0, -1): 90, (0, 1): 270}[direction]
+
+
+def label_justify(direction):
+    """Which way the text runs from the anchor.
+
+    Every label used to be justified left, so one pointing back at its own
+    component ran its text straight over the body -- RON_5V across R4,
+    SW_5V across L1. Text has to run away from the part, not into it.
+    """
+    return "right" if direction in ((-1, 0), (0, 1)) else "left"
 
 
 def mm(v):
@@ -341,13 +382,42 @@ def sheet(name, filename, description):
     return s
 
 
+_TOL_RE = re.compile(r"\s+(\d+(?:\.\d+)?\s*%)$")
+_VOLT_RE = re.compile(r"\s+(\d+(?:\.\d+)?\s*V)$")
+
+
+def split_value(value):
+    """'100nF 16V' -> ('100nF', '16V', ''), '1k 0.1%' -> ('1k', '', '0.1%').
+
+    A rating packed into the VALUE field is invisible to anything that
+    parses the schematic: a review tool reading "1k 0.1%" sees no usable
+    resistance and reports the part as unvalued, which is what happened to
+    34 capacitors and 16 resistors here. Only a trailing voltage or
+    tolerance token is peeled off, so "600R @ 100MHz 2A" and
+    "0.2A hold / 0.4A trip" are left exactly as they are.
+    """
+    tol = volt = ""
+    m = _TOL_RE.search(value)
+    if m:
+        tol = m.group(1).replace(" ", "")
+        value = value[:m.start()]
+    m = _VOLT_RE.search(value)
+    if m:
+        volt = m.group(1).replace(" ", "")
+        value = value[:m.start()]
+    return value.strip(), volt, tol
+
+
 def part(sh, prefix, lib_id, value, footprint, pins, mpn="", note="", nc=(),
          lcsc=""):
+    base, volt, tol = split_value(value)
     sh["parts"].append(
         {
             "prefix": prefix,
             "lib_id": lib_id,
-            "value": value,
+            "value": base,
+            "voltage": volt,
+            "tolerance": tol,
             "footprint": footprint,
             "pins": pins,
             "mpn": mpn,
@@ -397,12 +467,22 @@ part(pw, "Q", "Device:Q_NMOS_GSD", "100V 6.8mOhm N-ch", "Package_TO_SOT_SMD:TO-2
      "Source to battery, drain to load: body diode blocks reverse polarity. "
      "The previously specified PSMN4R3-100BSE does not exist", lcsc="C88066")
 C(pw, "1uF 50V", "VCAP", "VBAT_FB", mpn="", note="LM74700 charge-pump reservoir")
+C(pw, "100nF 100V", "VBAT_FB", "GND",
+  note="LM74700 ANODE input capacitor: the datasheet requires a minimum "
+       "22nF at ANODE and this node is behind FB1 with nothing else on it")
 R(pw, "100k", "VBAT_FB", "VBAT_UVLO", note="UVLO upper leg")
-R(pw, "25.5k", "VBAT_UVLO", "GND", note="UVLO lower leg -> board enables at ~5.9V")
+R(pw, "44.2k", "VBAT_UVLO", "GND",
+  note="UVLO lower leg. Ratio 0.3065 against V_EN_IH 1.06/2.0/2.6V gives "
+       "release at 3.5/6.5/8.5V. The earlier 25.5k assumed a 1.2V threshold "
+       "and would not have started until 9.8V typical, 12.8V worst case")
 
-part(pw, "D", "Device:D_TVS", "SMCJ33A", SMC, {"1": "+VBAT", "2": "GND"},
-     "Littelfuse SMCJ33A",
-     "33V standoff / 53.3V clamp @ 1500W: absorbs ISO 7637-2 pulse 5b load dump")
+# Unidirectional symbol: the A suffix is the unidirectional member of the
+# SMCJ family, and a bidirectional symbol leaves orientation ambiguous at
+# build -- this part backwards is a short across the battery.
+part(pw, "D", "Device:D_Zener", "SMCJ40A", SMC, {"1": "+VBAT", "2": "GND"},
+     "Littelfuse SMCJ40A",
+     "40V standoff / 64.5V clamp @ 1500W: absorbs ISO 7637-2 pulse 5b load "
+     "dump. 40V not 33V so the part stands off the declared 36V input top")
 C(pw, "100uF 100V", "+VBAT", "GND", fp="Capacitor_SMD:CP_Elec_10x10.5",
   mpn="Nichicon UCD2A101MNL1GS", note="Bulk hold-up; any 100uF >=80V SMD "
   "electrolytic on a 10x10.5 land works -- match in the JLC catalog at order")
@@ -416,6 +496,8 @@ part(pw, "U", "Regulator_Switching:LM5164DDA", "LM5164 (5V)", SO8EP,
      "LM5164DDAR", "100V synchronous buck, ultra-low Iq. Non-automotive "
      "variant; the Q1 is scarce", lcsc="C477928")
 R(pw, "100k", "+VBAT", "EN_5V", note="Enable tied to VIN (LM74700 already gates on UVLO)")
+C(pw, "10nF 100V", "EN_5V", "GND", note="EN sits on a bare 100k to VBAT; this "
+  "keeps a high-impedance enable node quiet in a vehicle")
 R(pw, "31.6k", "RON_5V", "GND",
   note="RON = 5.0V x 2500 / 400kHz (Eq 12) -> 396kHz; tON = 237ns at the "
        "53.3V clamp, comfortably above the 50ns minimum")
@@ -445,6 +527,7 @@ part(pw, "U", "Regulator_Switching:LM5164DDA", "LM5164 (3V3)", SO8EP,
      "LM5164DDAR", "Second buck straight off the battery: a shorted 5V "
      "sensor harness cannot brown out the MCU", lcsc="C477928")
 R(pw, "100k", "+VBAT", "EN_3V3")
+C(pw, "10nF 100V", "EN_3V3", "GND", note="EN noise immunity, as for the 5V rail")
 R(pw, "20.5k", "RON_3V3", "GND",
   note="RON = 3.3V x 2500 / 400kHz (Eq 12) -> 402kHz; tON = 154ns at the "
        "53.3V clamp, above the 50ns minimum")
@@ -458,8 +541,8 @@ R(pw, "57.6k", "FB_3V3", "GND", note="FB lower")
 R(pw, "95.3k", "SW_3V3", "RAMP_3V3", note="Ripple-injection ramp resistor RA")
 C(pw, "3.3nF 50V", "RAMP_3V3", "+3V3", note="Ramp capacitor CA")
 C(pw, "270pF 50V", "RAMP_3V3", "FB_3V3", note="Ramp coupling capacitor CB")
-C(pw, "22uF 6.3V", "+3V3", "GND", fp=C1206)
-C(pw, "22uF 6.3V", "+3V3", "GND", fp=C1206)
+C(pw, "22uF 16V", "+3V3", "GND", fp=C1206)
+C(pw, "22uF 16V", "+3V3", "GND", fp=C1206)
 C(pw, "100nF 16V", "+3V3", "GND")
 R(pw, "100k", "PG_3V3", "+3V3")
 part(pw, "D", "Device:D_Zener", "3.6V 300mW", "Diode_SMD:D_SOD-323",
@@ -475,8 +558,12 @@ part(pw, "PF", "Device:Polyfuse", "0.2A hold / 0.4A trip", "Resistor_SMD:R_1206_
 part(pw, "FB", "Device:L", "600R @ 100MHz 2A", "Inductor_SMD:L_0805_2012Metric",
      {"1": "VSENS_F", "2": "+5VS"}, "Wurth 742792022")
 C(pw, "10uF 16V", "+5VS", "GND", fp=C1206)
-part(pw, "D", "Device:D_TVS", "SMAJ5.0A", SMA, {"1": "+5VS", "2": "GND"},
-     "Littelfuse SMAJ5.0A", "Clamps harness-injected transients on the sensor 5V")
+part(pw, "TP", "Connector:TestPoint", "PG_5V", TP, {"1": "PG_5V"})
+part(pw, "TP", "Connector:TestPoint", "PG_3V3", TP, {"1": "PG_3V3"})
+part(pw, "D", "Device:D_Zener", "SMAJ6.0A", SMA, {"1": "+5VS", "2": "GND"},
+     "Littelfuse SMAJ6.0A",
+     "Clamps harness-injected transients on the sensor 5V. 6.0V standoff, "
+     "not 5.0V: a 5.0V part on a 5.0V rail leaks up to 800uA continuously")
 
 part(pw, "D", "Device:LED", "green", LED0805, {"1": "PWR_LED_K", "2": "+3V3"}, note="Power indicator")
 R(pw, "1k", "PWR_LED_K", "GND")
@@ -544,6 +631,9 @@ part(mc, "D", "Device:D_Schottky", "40V 1A", SOD123, {"1": "+5V", "2": "VBUS"},
      "PMEG4010", "OR-ing: bench USB can power the board, but the 5V buck "
      "(5.00V) reverse-biases it whenever the car is connected")
 C(mc, "10uF 16V", "VBUS", "GND", fp=C1206)
+C(mc, "100nF 16V", "VBUS", "GND",
+  note="USBLC6-2SC6 VBUS pin decoupling; the ST datasheet asks for this "
+       "alongside the bulk part for surge-layout reasons")
 part(mc, "U", "Power_Protection:USBLC6-2SC6", "USBLC6-2SC6", SOT236,
      {"1": "USB_DP_CON", "2": "GND", "3": "USB_DM_CON",
       "4": "USB_DM", "5": "VBUS", "6": "USB_DP"},
@@ -558,7 +648,9 @@ R(mc, "4.7k", "+3V3", "I2C_SCL")
 
 R(mc, "1k", "LED1", "LED1_A")
 part(mc, "D", "Device:LED", "amber", LED0805, {"1": "GND", "2": "LED1_A"})
-R(mc, "1k", "LED2", "LED2_A")
+R(mc, "150", "LED2", "LED2_A",
+  note="Blue Vf sits close to 3.288V, so 1k here gave about 0.19mA against "
+       "the amber channel's 1.3mA. Fit an emitter with Vf <= 2.9V")
 part(mc, "D", "Device:LED", "blue", LED0805, {"1": "GND", "2": "LED2_A"})
 
 # SPI breakout for MCP2515 / CC1101 / MAX6675 / etc.
@@ -569,6 +661,9 @@ part(mc, "J", "Connector_Generic:Conn_01x06", "SPI", HDR6,
 
 # WS2812 shift-light header: true 5 V data via AHCT buffer (3.3 V TTL-friendly
 # input, 5 V rail). IO48 is RMT-capable and not a strapping pin.
+R(mc, "10k", "SPI_CS", "+3V3",
+  note="Holds an attached slave deselected until firmware drives IO47; the "
+       "module pin's reset-state pull is the unknown")
 R(mc, "33", "LED_DIN_MCU", "LED_DIN_A",
   note="Edge-rate limit into the level shifter")
 part(mc, "U", "74xGxx:74AHCT1G125", "74AHCT1G125", SOT235,
@@ -580,17 +675,28 @@ part(mc, "U", "74xGxx:74AHCT1G125", "74AHCT1G125", SOT235,
      "SN74AHCT1G125DBVR", lcsc="",
      note="5 V buffer so WS2812 DIN is a real 5 V rail, not 3.3 V hoping")
 C(mc, "100nF 16V", "+5V", "GND", note="AHCT decoupling")
+R(mc, "100", "LED_DIN", "LED_DIN_J",
+  note="Series termination into the strip. The buffer drove the connector "
+       "directly, and a WS2812 strip is metres of unterminated lead")
 part(mc, "PF", "Device:Polyfuse", "0.5A hold", "Resistor_SMD:R_1206_3216Metric",
      {"1": "+5V", "2": "LED_5V"}, "Bourns MF-MSMF050",
      "Fused tap for the shift-light strip (8x WS2812 ~0.5 A worst case)")
 part(mc, "J", "Connector_Generic:Conn_01x03", "WS2812", HDR3,
-     {"1": "LED_5V", "2": "LED_DIN", "3": "GND"},
+     {"1": "LED_5V", "2": "LED_DIN_J", "3": "GND"},
      note="Shift-light header: +5V / 5V-logic DIN / GND")
 
 # Remaining free GPIOs after SPI + WS2812. All three are strapping pins.
+# IO45 selects VDD_SPI voltage and IO46 the boot mode; both must read low at
+# reset. The internal pull-downs do that on a bare board, but this is a user
+# header -- anything attached that pulls IO45 high sets the flash supply to
+# 1.8V and the module simply will not boot.
+R(mc, "10k", "IO3", "GND", note="Strapping pin held low at boot")
+R(mc, "10k", "IO45", "GND", note="Strapping pin: VDD_SPI = 3.3V")
+R(mc, "10k", "IO46", "GND", note="Strapping pin: normal boot mode")
 part(mc, "J", "Connector_Generic:Conn_01x03", "Spare IO", HDR3,
      {"1": "IO3", "2": "IO45", "3": "IO46"},
-     note="IO3/IO45/IO46 are strapping pins -- leave floating at boot")
+     note="IO3/IO45/IO46 are strapping pins, each with a 10k pull-down. "
+          "Anything attached must not fight it at boot")
 part(mc, "J", "Connector_Generic:Conn_01x04", "Rail break-out", HDR4,
      {"1": "+5V", "2": "+3V3", "3": "GND", "4": "GND"})
 
@@ -611,10 +717,14 @@ part(sd, "Q", "Device:Q_PMOS_GSD", "-20V 2.3A P-ch", SOT23,
      "High-side switch so firmware can power-cycle a wedged card")
 R(sd, "100k", "+3V3", "SD_PG", note="Default off")
 part(sd, "Q", "Device:Q_NMOS_GSD", "60V 300mA N-ch", SOT23,
-     {"1": "SD_EN_G", "2": "GND", "3": "SD_PG"}, "2N7002", "Level shift for the P-ch gate")
-R(sd, "10k", "SD_PWR_EN", "SD_EN_G")
+     {"1": "SD_EN_G", "2": "GND", "3": "SD_PG"}, "2N7002",
+     "Level shift for the P-ch gate. Prefer an AEC-Q101 equivalent: the "
+     "standard 2N7002 is not automotive qualified")
+R(sd, "1k", "SD_PWR_EN", "SD_EN_G",
+  note="Series gate resistor. 10k here divided against R27 100k and left "
+       "only 0.24V over the 2N7002 cold-end threshold")
 R(sd, "100k", "SD_EN_G", "GND")
-C(sd, "10uF 6.3V", "SD_VDD", "GND", fp=C1206)
+C(sd, "10uF 16V", "SD_VDD", "GND", fp=C1206)
 C(sd, "100nF 16V", "SD_VDD", "GND")
 
 for sig in ["CLK", "CMD", "D0", "D1", "D2", "D3"]:
@@ -669,6 +779,15 @@ part(an, "J", "Connector_Generic:Conn_01x08", "Sensor harness", JST8,
 
 for n in range(1, 5):
     inp, node, out = "AIN%d_IN" % n, "AIN%d_A" % n, "AIN%d" % n
+    # Transient clamp at the connector, ahead of everything else. The BAT54S
+    # pairs downstream are 200mA signal Schottkys with no pulse energy rating,
+    # so on an unshielded harness they were the only thing standing between an
+    # ISO 7637 pulse and the ADC. Bidirectional because pulse 1 is negative.
+    # 40V standoff clears a sustained short to the 36V top of the input window,
+    # which a lower standoff part would sit in conduction on until it failed.
+    part(an, "D", "Device:D_TVS", "SMAJ40CA", SMA, {"1": inp, "2": "GND"},
+         "Littelfuse SMAJ40CA",
+         "Ch%d harness transient clamp (bidirectional, 400W)" % n)
     R(an, "1k 0.1%", inp, node,
       note="Ch%d series/fault-current limit; 0.1%% thin film -- it is inside "
            "the divider chain, so its tolerance is a gain error" % n)
@@ -712,7 +831,10 @@ part(an, "U", "Analog_ADC:ADS1115IDGS", "ADS1115",
 C(an, "100nF 16V", "+3V3", "GND", note="ADS1115 decoupling")
 
 R(an, "100k", "+VBAT", "VBAT_SNS", note="Battery monitor: divide by 11")
-R(an, "10k", "VBAT_SNS", "GND")
+R(an, "8.2k", "VBAT_SNS", "GND",
+  note="Divide by 13.2, not 11: at 36V the 11:1 divider put 3.27V on the "
+       "pin, above the ADC's usable 3.1V, so the reading saturated near "
+       "the top of the declared input window")
 C(an, "100nF 16V", "VBAT_SNS", "GND")
 part(an, "D", "Device:D_Schottky_Dual_Series_AKC", "BAT54S", SOT23,
      {"1": "GND", "3": "VBAT_SNS", "2": "+3V3"}, "BAT54S", "Battery-monitor clamp")
@@ -738,7 +860,7 @@ def assign_refs():
 PAGE_W, PAGE_H = 420.0, 297.0
 MARGIN_X, MARGIN_TOP, MARGIN_BOT = 12.0, 18.0, 22.0
 STUB = 5.08
-LABEL_ALLOWANCE = 30.0
+LABEL_ALLOWANCE = 21.0   # rails are power symbols now, not long labels
 GRID = 1.27
 
 
@@ -771,6 +893,16 @@ def place(libs):
                 if dirs <= {(0, 1), (0, -1)}:
                     p["theta"] = 90
             p["ext"] = symbol_extent(libs, p["lib_id"], p["theta"])
+            up = down = 0.0
+            for _n, _nm, lx, ly, ang, hid in libs.pins(p["lib_id"]):
+                if hid:
+                    continue
+                _o, dv = pin_geometry(lx, ly, ang, p["theta"])
+                if dv == (0, -1):
+                    up = STUB + 3.81
+                elif dv == (0, 1):
+                    down = STUB + 3.81
+            p["_up"], p["_down"] = up, down
 
         columns, col, y = [], [], MARGIN_TOP
         usable = PAGE_H - MARGIN_TOP - MARGIN_BOT
@@ -779,7 +911,7 @@ def place(libs):
             # Leave room for the reference and value text above and below the
             # body, otherwise adjacent rows of passives print on top of each
             # other.
-            h = max((y1 - y0) + 7.62, 15.24)
+            h = max((y1 - y0) + 7.62 + p["_up"] + p["_down"], 15.24)
             if col and y + h > MARGIN_TOP + usable:
                 columns.append(col)
                 col, y = [], MARGIN_TOP
@@ -788,7 +920,6 @@ def place(libs):
             y += h
         if col:
             columns.append(col)
-
         x = MARGIN_X
         for col in columns:
             left = min(p["ext"][0] for p in col)
@@ -799,6 +930,15 @@ def place(libs):
                 p["y"] = snap(p["_y"] - p["ext"][2])
             x = cx + right + LABEL_ALLOWANCE + 6.35
         sh["width_used"] = x
+        # The packer wraps on height but never on width, so a sheet that grew
+        # wide simply ran off the page: two symbols on the power sheet landed
+        # at x = 422.9 on a 420 mm page, where ERC reported them unconnected
+        # and nothing else complained. Fail loudly instead.
+        if x > PAGE_W:
+            raise SystemExit(
+                "sheet %r needs %.0f mm of width but the page is %.0f mm -- "
+                "%d columns. Widen the page or split the sheet."
+                % (sh["name"], x, PAGE_W, len(columns)))
 
 
 # --------------------------------------------------------------------------
@@ -819,12 +959,25 @@ def emit_symbol(libs, sh, p, sheet_uuid):
         % (p["lib_id"], mm(p["x"]), mm(p["y"]), p["theta"],
            "no" if p["prefix"].startswith("#") else "yes", su)
     )
-    ref_y = p["y"] + y0 - 2.0
-    val_y = p["y"] + y1 + 2.0
-    props = [("Reference", p["ref"], ref_y, False),
-             ("Value", p["value"], val_y, False),
+    # Reference sits above the body and value below -- but a pin leaving the
+    # top or bottom takes a stub and then a label or power symbol with it, and
+    # the text landed straight on top of that: "LM5164 (5V)" printed through
+    # the GND symbol under U2. Clear the whole stub where a pin goes that way.
+    up, down = p.get("_up", 0.0), p.get("_down", 0.0)
+    ref_y = p["y"] + y0 - 2.0 - up
+    val_y = p["y"] + y1 + 2.0 + down
+    # A power symbol's reference (#PWR003) is noise -- the rail name in the
+    # Value field is the label. KiCad hides these by convention and so do we,
+    # along with the flags'.
+    anon = p["prefix"].startswith("#")
+    props = [("Reference", p["ref"], ref_y, anon),
+             ("Value", p["value"], val_y, p["lib_id"] == "power:PWR_FLAG"),
              ("Footprint", p["footprint"], val_y, True),
              ("Datasheet", "~", val_y, True)]
+    if p.get("voltage"):
+        props.append(("Voltage", p["voltage"], val_y, True))
+    if p.get("tolerance"):
+        props.append(("Tolerance", p["tolerance"], val_y, True))
     if p["mpn"]:
         props.append(("MPN", p["mpn"], val_y, True))
     if p["note"]:
@@ -849,11 +1002,19 @@ def emit_symbol(libs, sh, p, sheet_uuid):
     return "\n".join(lines)
 
 
+PWR_COUNTER = [0]
+
+
 def emit_sheet(libs, sh, sheet_uuid, page):
     used = []
     for p in sh["parts"]:
         if p["lib_id"] not in used:
             used.append(p["lib_id"])
+    for p in sh["parts"]:
+        for net in p["pins"].values():
+            lid = RAILS.get(net, (None,))[0]
+            if lid and lid not in used:
+                used.append(lid)
     lib_block = [libs.raw(lib_id) for lib_id in used]
 
     out = [
@@ -878,6 +1039,7 @@ def emit_sheet(libs, sh, sheet_uuid, page):
     ]
 
     wires, labels, syms, ncs = [], [], [], []
+    pwr_n = [PWR_COUNTER[0]]
     for p in sh["parts"]:
         syms.append(emit_symbol(libs, sh, p, sheet_uuid))
         for num, _, lx, ly, ang, hidden in libs.pins(p["lib_id"]):
@@ -900,17 +1062,35 @@ def emit_sheet(libs, sh, sheet_uuid, page):
                 % (mm(px), mm(py), mm(ex), mm(ey),
                    det_uuid("wire:%s:%s:%s" % (sh["file"], p["ref"], num)))
             )
+            # PWR_FLAG keeps a label. Giving it a power symbol instead pairs
+            # the two into an island of their own that declares a rail and
+            # connects to nothing you can see; a named label reads better and
+            # joins the rail the same way.
+            rail = None if p["prefix"].startswith("#") else RAILS.get(net)
+            if rail:
+                lib_id, shown = rail
+                sx, sy, stheta = power_placement(libs, lib_id, ex, ey, d)
+                pwr_n[0] += 1
+                syms.append(emit_symbol(libs, sh, {
+                    "lib_id": lib_id, "value": shown, "voltage": "",
+                    "tolerance": "", "footprint": "", "mpn": "", "note": "",
+                    "prefix": "#PWR", "ref": "#PWR%03d" % pwr_n[0],
+                    "x": sx, "y": sy, "theta": stheta,
+                    "ext": symbol_extent(libs, lib_id, stheta),
+                }, sheet_uuid))
+                continue
             labels.append(
                 '  (global_label "%s" (shape input) (at %s %s %d) (fields_autoplaced)\n'
-                "    (effects (font (size 1.27 1.27)) (justify left))\n"
+                "    (effects (font (size 1.27 1.27)) (justify %s))\n"
                 "    (uuid %s)\n"
                 '    (property "Intersheet References" "${INTERSHEET_REFS}" (at %s %s 0)\n'
                 "      (effects (font (size 1.27 1.27)) (justify left) hide)\n"
                 "    )\n  )"
-                % (net, mm(ex), mm(ey), label_rotation(d),
+                % (net, mm(ex), mm(ey), label_rotation(d), label_justify(d),
                    det_uuid("lbl:%s:%s:%s" % (sh["file"], p["ref"], num)), mm(ex), mm(ey))
             )
 
+    PWR_COUNTER[0] = pwr_n[0]
     out += ncs + wires + labels + syms
     out.append("")
     out.append('  (sheet_instances\n    (path "/" (page "%d"))\n  )' % page)
@@ -1035,16 +1215,19 @@ def write_bom(path):
             rows.append(p)
     groups = {}
     for p in rows:
-        key = (p["value"], p["footprint"], p["mpn"], p["lcsc"])
+        key = (p["value"], p.get("voltage", ""), p.get("tolerance", ""),
+               p["footprint"], p["mpn"], p["lcsc"])
         groups.setdefault(key, []).append(p["ref"])
     with open(path, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(["Qty (1 board)", "Qty (10 boards)", "References", "Value",
-                    "Footprint", "Manufacturer part number", "LCSC", "Notes"])
-        for (value, fp, mpn, lcsc), refs in sorted(groups.items(), key=lambda kv: kv[1][0]):
+                    "Voltage", "Tolerance", "Footprint",
+                    "Manufacturer part number", "LCSC", "Notes"])
+        for (value, volt, tol, fp, mpn, lcsc), refs in sorted(
+                groups.items(), key=lambda kv: kv[1][0]):
             note = next((p["note"] for p in rows if p["ref"] == refs[0] and p["note"]), "")
             w.writerow([len(refs), len(refs) * 10, " ".join(sorted(refs)),
-                        value, fp, mpn, lcsc, note])
+                        value, volt, tol, fp, mpn, lcsc, note])
     return len(rows), len(groups)
 
 

@@ -110,8 +110,8 @@ def route(board):
     u3 = find(board, value="LM5164 (3V3)")
     l1 = find(board, nets={"SW_5V", "+5V"})
     l2 = find(board, nets={"SW_3V3", "+3V3"})
-    c_hf = find(board, value="100nF 100V")   # input HF bypass
-    c_in = find(board, value="10uF 100V")    # input bulk bypass
+    c_hf = find(board, value="100nF", nets={"+VBAT", "GND"})  # input HF bypass
+    c_in = find(board, value="10uF", nets={"+VBAT", "GND"})   # input bulk bypass
 
     n_sw5 = net(board, "SW_5V")
     n_sw3 = net(board, "SW_3V3")

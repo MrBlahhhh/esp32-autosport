@@ -25,8 +25,8 @@ PROJ = os.path.abspath(os.path.join(HERE, ".."))
 SRC = os.path.join(PROJ, "bom.csv")
 OUT = os.path.join(PROJ, "pinscope", "esp32-autosport-bom.csv")
 
-COLUMNS = ["Reference", "Qty", "Value", "Footprint", "Datasheet", "LCSC",
-           "Manufacturer Part Number"]
+COLUMNS = ["Reference", "Qty", "Value", "Voltage", "Tolerance", "Footprint",
+           "Datasheet", "LCSC", "Manufacturer Part Number"]
 
 
 def main():
@@ -40,6 +40,7 @@ def main():
         for r in rows:
             refs = [x for x in r["References"].split() if x]
             w.writerow([",".join(refs), r["Qty (1 board)"], r["Value"],
+                        r.get("Voltage", ""), r.get("Tolerance", ""),
                         r["Footprint"], "", r.get("LCSC", ""),
                         r.get("Manufacturer part number", "")])
 

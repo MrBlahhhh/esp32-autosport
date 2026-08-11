@@ -166,7 +166,14 @@ def bom():
             # space, and "LittelfuseSMCJ33A" matches nothing at all --
             # eleven lines that had matched perfectly well on the plain
             # value went to "no matches" when the maker was left on.
-            comment = (p["mpn"] or p["value"]).split()[-1] if p["mpn"]                 else p["value"]
+            if p["mpn"]:
+                comment = p["mpn"].split()[-1]
+            else:
+                # Rebuild the full rating for the matcher. The VALUE field is
+                # now just "100nF"; handing JLC that alone would collapse the
+                # 16V and 100V parts onto one line and match the wrong one.
+                comment = " ".join(x for x in (p["value"], p.get("voltage", ""),
+                                               p.get("tolerance", "")) if x)
             key = (comment, p["footprint"], p["lcsc"])
             groups.setdefault(key, []).append(p["ref"])
     out = os.path.join(FAB, "bom.csv")
