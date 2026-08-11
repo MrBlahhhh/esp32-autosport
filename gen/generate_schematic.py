@@ -1115,6 +1115,38 @@ def emit_symbol(libs, sh, p, sheet_uuid):
     return "\n".join(lines)
 
 
+HIER_LABEL = (
+    '  (hierarchical_label "%s" (shape %s) (at %s %s %d)\n'
+    "    (effects (font (size 1.27 1.27)) (justify %s))\n"
+    "    (uuid %s)\n  )"
+)
+
+SHEET_PIN = (
+    '    (pin "%s" %s (at %s %s 180)\n'
+    "      (effects (font (size 1.27 1.27)) (justify right))\n"
+    "      (uuid %s)\n    )"
+)
+
+
+def crossing_nets(sh):
+    """Nets this sheet shares with another one, so they are its interface.
+
+    Rails are left out: a power symbol is global by definition and does not
+    belong in a sheet's signal interface. Everything else that leaves the
+    sheet becomes a hierarchical label here and a pin on the sheet symbol,
+    which is what makes six pages an actual hierarchy rather than six
+    drawings that happen to share net names.
+    """
+    mine = {v for p in sh["parts"] for v in p["pins"].values()}
+    others = set()
+    for o in SHEETS:
+        if o is sh:
+            continue
+        for p in o["parts"]:
+            others.update(p["pins"].values())
+    return sorted(n for n in mine & others if n not in RAILS)
+
+
 LOCAL_LABEL = (
     '  (label "%s" (at %s %s 0)\n'
     "    (effects (font (size 1.27 1.27)) (justify left bottom))\n"
@@ -1159,6 +1191,7 @@ def emit_sheet(libs, sh, sheet_uuid, page):
     ]
 
     wires, labels, syms, ncs = [], [], [], []
+    crossing = set(crossing_nets(sh))
     pwr_n = [PWR_COUNTER[0]]
 
     # Satellite links become a drawn wire, and both ends lose their label:
@@ -1228,6 +1261,13 @@ def emit_sheet(libs, sh, sheet_uuid, page):
                     "ext": symbol_extent(libs, lib_id, stheta),
                 }, sheet_uuid))
                 continue
+            if net in crossing:
+                labels.append(
+                    HIER_LABEL % (net, "bidirectional", mm(ex), mm(ey),
+                                  label_rotation(d), label_justify(d),
+                                  det_uuid("hlbl:%s:%s:%s"
+                                           % (sh["file"], p["ref"], num))))
+                continue
             labels.append(
                 '  (global_label "%s" (shape input) (at %s %s %d) (fields_autoplaced)\n'
                 "    (effects (font (size 1.27 1.27)) (justify %s))\n"
@@ -1266,26 +1306,53 @@ def emit_root(sheet_uuids):
         "  (lib_symbols\n  )",
         "",
     ]
-    y = 30.0
+    y = 20.32
+    root_wires, root_labels = [], []
     for i, sh in enumerate(SHEETS):
         su = sheet_uuids[sh["file"]]
-        out.append(
-            "  (sheet (at 40 %s) (size 120 25) (fields_autoplaced)\n"
+        iface = crossing_nets(sh)
+        height = max(25.0, 2.54 * (len(iface) + 2))
+        pins = []
+        for k, net in enumerate(iface):
+            py = snap(y + 2.54 * (k + 1))
+            pins.append(SHEET_PIN % (net, "bidirectional", mm(40.64), mm(py),
+                                     det_uuid("spin:%s:%s" % (sh["file"], net))))
+            # A named stub off each pin, so the top level joins the sheets by
+            # name while every sheet still declares what it needs.
+            root_wires.append(
+                "  (wire (pts (xy %s %s) (xy %s %s))\n"
+                "    (stroke (width 0) (type default))\n"
+                "    (uuid %s)\n  )"
+                % (mm(40.64), mm(py), mm(31.75), mm(py),
+                   det_uuid("swire:%s:%s" % (sh["file"], net))))
+            root_labels.append(
+                '  (global_label "%s" (shape bidirectional) (at %s %s 180)'
+                " (fields_autoplaced)\n"
+                "    (effects (font (size 1.27 1.27)) (justify right))\n"
+                "    (uuid %s)\n  )"
+                % (net, mm(31.75), mm(py),
+                   det_uuid("slbl:%s:%s" % (sh["file"], net))))
+        block = (
+            "  (sheet (at 40.64 %s) (size 120.65 %s) (fields_autoplaced)\n"
             "    (stroke (width 0.1524) (type solid))\n"
             "    (fill (color 0 0 0 0.0000))\n"
             "    (uuid %s)\n"
-            '    (property "Sheetname" "%s" (at 40 %s 0)\n'
+            '    (property "Sheetname" "%s" (at 40.64 %s 0)\n'
             "      (effects (font (size 1.27 1.27)) (justify left bottom))\n    )\n"
-            '    (property "Sheetfile" "%s" (at 40 %s 0)\n'
+            '    (property "Sheetfile" "%s" (at 40.64 %s 0)\n'
             "      (effects (font (size 1.27 1.27)) (justify left top))\n    )\n"
             "    (instances\n"
             '      (project "%s"\n'
             '        (path "/%s" (page "%d"))\n'
-            "      )\n    )\n  )"
-            % (mm(y), su, sh["name"], mm(y - 0.6), sh["file"], mm(y + 25.6),
-               PROJECT, ROOT_UUID, i + 2)
+            "      )\n    )"
+            % (mm(y), mm(height), su, sh["name"], mm(y - 0.6), sh["file"],
+               mm(y + height + 0.6), PROJECT, ROOT_UUID, i + 2)
         )
-        y += 45.0
+        if pins:
+            block += "\n" + "\n".join(pins)
+        out.append(block + "\n  )")
+        y += height + 12.0
+    out += root_wires + root_labels
     out.append("")
     out.append('  (sheet_instances\n    (path "/" (page "1"))\n  )')
     out.append(")")
