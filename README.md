@@ -341,7 +341,7 @@ were checked against the LCSC catalog (2026-08):
 | Buck ×2 | LM5164DDAR | C477928 | Non-automotive variant — the Q1 is backordered at DigiKey and nearly dry at Mouser; same silicon, minus AEC-Q100 |
 | Ideal-diode ctrl | LM74700QDBVRQ1 | C2941042 | In stock (~$0.72) |
 | Reverse-batt FET | IPD068N10N3G | C88066 | Replaces PSMN4R3-100BSE, **which does not exist** (nearest real Nexperia part is a D2PAK); DPAK, drops into the same footprint, 6.8 mΩ costs ~3 mV at load |
-| CAN transceiver | TJA1051T/3 | C38695 | NXP original, in stock; the BOM carries the `,118` reel suffix |
+| CAN transceiver | TJA1051T/3 | C58988 | NXP original, in stock; the BOM carries the `,118` reel suffix |
 | Precision ADC | ADS1115IDGSR | C37593 | Non-automotive variant — the Q1 needs a manufacturer quote at DigiKey |
 | WS2812 buffer | SN74AHCT1G125DBVR | C7975 | 5 V DIN driver for the shift-light header |
 

@@ -1040,7 +1040,7 @@ def write_bom(path):
         for (value, fp, mpn, lcsc), refs in sorted(groups.items(), key=lambda kv: kv[1][0]):
             note = next((p["note"] for p in rows if p["ref"] == refs[0] and p["note"]), "")
             w.writerow([len(refs), len(refs) * 10, " ".join(sorted(refs)),
-                        value, fp, mpn, note])
+                        value, fp, mpn, lcsc, note])
     return len(rows), len(groups)
 
 
