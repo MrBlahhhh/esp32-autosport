@@ -141,7 +141,9 @@ FIXED = {
     "value:UART0":              (26.0, 81.5, 90),   # bottom edge
     "value:I2C / Qwiic":        (41.0, 81.5, 90),
     "value:Rail break-out":     (56.0, 81.5, 90),
-    "value:WS2812":             (70.5, 81.5, 90),   # shift-light strip
+    # 1.5 mm left of centre in its slot, so H4's keepout ring clears the
+    # connector body by 0.65 mm.
+    "value:WS2812":             (69.0, 81.5, 90),   # shift-light strip
     "value:RESET":              (78.0, 56.5, 0),    # right edge, case access
     "value:BOOT":               (78.0, 63.5, 0),
 }
@@ -194,11 +196,13 @@ BUCK_FIXED = [
 ]
 
 
-# Mounting holes, one per corner region.  H3 and H4 used to sit inboard --
-# H3 beside the module and H4 halfway down the right edge -- which put a
-# fixing right where the USB port and the MCU passives wanted to be.  On the
-# corners they are out of the way of both and easier to bolt down.
-HOLES = [(4.0, 4.0), (4.0, 70.0), (80.0, 4.0), (80.0, 72.0)]
+# Mounting holes: one per corner, 4 mm in from each, so the four of them
+# form a square.  They used to sit inboard and at three different insets --
+# a fixing beside the module, another halfway down the right edge, and the
+# bottom pair 6 mm out of line with the top -- which is neither symmetric
+# nor useful.  4 mm is set by H1: any further in and its keepout ring eats
+# into J7, and the top header row has no slack to give.
+HOLES = [(4.0, 4.0), (4.0, 80.0), (80.0, 4.0), (80.0, 80.0)]
 
 # How much of a zone's spare height may go between its rows.  Silkscreen
 # reference text is 0.8 mm, so a millimetre on top of the 0.4 mm packing gap
