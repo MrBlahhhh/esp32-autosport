@@ -77,6 +77,34 @@ def run(cmd, label):
         raise SystemExit("%s failed (exit %d)" % (label, res.returncode))
 
 
+class Lock:
+    """Refuse to run two builds against the same board at once.
+
+    Every stage reads and rewrites esp32s3-can-sd-logger.kicad_pcb. Two
+    builds overlapping means one regenerates the board while the other is
+    midway through routing it, and the second then imports a Specctra
+    session that no longer matches -- which is exactly how one run here
+    died at "Specctra session import failed" after ten minutes of work.
+    """
+
+    path = os.path.join(PROJ, ".build_board.lock")
+
+    def __enter__(self):
+        if os.path.exists(self.path):
+            with open(self.path, encoding="utf-8") as fh:
+                who = fh.read().strip()
+            raise SystemExit(
+                "another build is already running (%s). Wait for it, or "
+                "delete %s if it died." % (who, self.path))
+        with open(self.path, "w", encoding="utf-8") as fh:
+            fh.write("pid %d" % os.getpid())
+        return self
+
+    def __exit__(self, *exc):
+        if os.path.exists(self.path):
+            os.remove(self.path)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--freerouting", default=None)
@@ -127,4 +155,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    with Lock():
+        main()

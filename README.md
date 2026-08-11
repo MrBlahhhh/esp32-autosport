@@ -11,14 +11,16 @@ harness convention (12 V / GND / CAN_H / CAN_L), same default-on 120 Ω
 termination jumper — but trades the second CAN channel for an onboard microSD
 socket and conditioned analog inputs.
 
-**Status: Rev B, not yet orderable.** Schematic is ERC-clean on KiCad 9.0.
-The PCB is **84 x 80 mm**, 4-layer, placed and routed with **zero DRC errors**
-— but **three connections are still open** and need finishing in KiCad's
-interactive router before the Gerbers are worth sending. Rev B carries the
-fixes from an external datasheet review (§7): the LM74700 enable divider,
-the ANODE capacitor, two TVS standoff corrections, transient clamps on the
-analog harness inputs, and a dozen smaller items. See §9 for how the board is
-built and §10 for the ordering steps. **Nothing has ever been fabricated.**
+**Status: Rev B, fully routed.** Schematic is ERC-clean on KiCad 9.0. The PCB
+is **84 x 84 mm**, 4-layer, **fully placed and routed with zero DRC errors and
+nothing unconnected** — 1447 tracks, 258 vias, 179 footprints, 106 nets. Rev B
+carries the fixes from an external datasheet review (§7): the LM74700 enable
+divider, the ANODE capacitor, two TVS standoff corrections, transient clamps
+on the analog harness inputs, and a dozen smaller items. `fab/` holds the
+Gerbers, drill, BOM and pick-and-place in JLCPCB's format, BOM and CPL verified
+to list the same 145 designators. See §9 for how the board is built and §10 for
+the ordering steps. **Nothing has ever been fabricated — the first order should
+be a small prototype run.**
 
 ---
 
@@ -31,7 +33,7 @@ built and §10 for the ordering steps. **Nothing has ever been fabricated.**
 | CAN | 1× CAN 2.0B, TJA1051T/3, ESP32-S3 TWAI controller, jumper-selectable split termination |
 | Storage | microSD, 4-bit SDMMC, switchable card supply |
 | Analog in | 4 channels, solder-jumper divider (0–3.3 V / 0–5 V / 0–16 V) + optional pull-up bias, shared by the ESP32 ADC and a 16-bit ADS1115 |
-| Extras | Battery voltage monitor, USB-C (native USB), I²C/Qwiic, UART0, SPI breakout, WS2812 5 V DIN header, spare-IO header |
+| Extras | Battery voltage monitor, USB-C (native USB), I²C/Qwiic, UART0, SPI breakout, WS2812 5 V DIN header, 6-pin spare-IO header |
 | Rails | +5 V @ 1 A, +3V3 @ 1 A, +5 V sensor excitation (separately fused) |
 | Parts | 168 component instances, 87 distinct BOM lines, all surface-mount except 8 through-hole connectors |
 
@@ -240,7 +242,6 @@ MCU will back-feed the card through its I/O pins while its supply is off.
 | 7 | IO7 | `SD_PWR_EN` | microSD supply enable (high = on) |
 | 12 | IO8 | `SD_CD` | Card detect |
 | 17–22 | IO9–IO14 | `SD_D3,D2,D1,D0,CMD,CLK` | SDMMC 4-bit |
-| 8, 9 | IO15, IO16 | `LED1`, `LED2` | Status LEDs |
 | 10, 11 | IO17, IO18 | `CAN_TX`, `CAN_RX` | TWAI |
 | 23 | IO21 | `CAN_S` | Transceiver silent mode (low = normal) |
 | 13, 14 | IO19, IO20 | `USB_DM`, `USB_DP` | Native USB |
@@ -250,7 +251,8 @@ MCU will back-feed the card through its I/O pins while its supply is off.
 | 25 | IO48 | `LED_DIN_MCU` | WS2812 data (via 5 V AHCT buffer → header) |
 | 27 | IO0 | `MCU_BOOT` | BOOT button |
 | 3 | EN | `MCU_EN` | RESET button |
-| 15, 16, 26 | IO3, IO46, IO45 | — | Spare-IO header (strapping — leave floating at boot) |
+| 15, 16, 26 | IO3, IO46, IO45 | — | Spare-IO header `J7`, each with a 10 k pull-down |
+| 8, 9 | IO15, IO16 | — | Spare-IO header `J7` pins 4–5 (were status LEDs) |
 | 28, 29, 30 | IO35, IO36, IO37 | — | **Unusable** — octal PSRAM |
 
 `IO3`, `IO45` and `IO46` are strapping pins and are broken out with no pull
@@ -612,7 +614,7 @@ and pin the stackup you were going to get regardless.
 quantity 5, tooling holes *Added by JLCPCB*. Every part is on the top face.
 
 **4 — Upload the parts files.** BOM is `fab/bom.csv`, CPL (they may call it
-"pick and place") is `fab/positions.csv`. Both list the same **136
+"pick and place") is `fab/positions.csv`. Both list the same **145
 designators** — they have to, because JLC pairs them up by designator and
 anything present in one and missing from the other simply does not get
 assembled. The eight through-hole connectors are deliberately in neither
@@ -625,9 +627,9 @@ limit switch for a Schottky diode named "40V 1A" and a real WS2812 LED for a
 header named WS2812. Both happened.
 
 **5 — Match the parts.** **12** lines arrive with a part number and match
-themselves. Another **18** carry a specific manufacturer part number and
-should match on that. The remaining **33** are generic passives where any
-equivalent will do.
+themselves; the other **52** you pick on this screen. Most carry a specific
+manufacturer part number and should match on it — the rest are generic
+passives where any equivalent will do.
 Take *Basic* parts over *Extended* where the value and package match; Extended
 parts add a setup fee each. Two things to hold to: the 0.1 % divider resistors
 (`R43`–`R62`) must stay **0.1 %**, that tolerance is the whole point of the

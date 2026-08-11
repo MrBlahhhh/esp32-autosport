@@ -6559,7 +6559,7 @@
     (property "Datasheet" "~" (at 284.48 154.4 0)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "Note" "Power indicator" (at 284.48 154.4 0)
+    (property "Note" "The board's only LED: +3V3 is up, so the whole supply chain came through -- battery, ideal diode, and both converters" (at 284.48 154.4 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (pin "1" (uuid 11d94752-62dd-5124-b913-e5904279e77b))

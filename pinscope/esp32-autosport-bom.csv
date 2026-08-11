@@ -13,15 +13,13 @@ C4,1,10uF,100V,,Capacitor_SMD:C_1206_3216Metric,,,
 "C15,C8",2,3.3nF,50V,,Capacitor_SMD:C_0805_2012Metric,,,
 "C16,C9",2,270pF,50V,,Capacitor_SMD:C_0805_2012Metric,,,
 D1,1,SMCJ40A,,,Diode_SMD:D_SMC,,,Littelfuse SMCJ40A
-"D10,D12,D14,D16",4,SMAJ40CA,,,Diode_SMD:D_SMA,,,Littelfuse SMAJ40CA
-"D11,D13,D15,D17,D18",5,BAT54S,,,Package_TO_SOT_SMD:SOT-23,,,BAT54S
 D2,1,3.6V 300mW,,,Diode_SMD:D_SOD-323,,,onsemi MM3Z3V6T1G
 D3,1,SMAJ6.0A,,,Diode_SMD:D_SMA,,,Littelfuse SMAJ6.0A
 D4,1,green,,,LED_SMD:LED_0805_2012Metric,,,
 D5,1,40V 1A,,,Diode_SMD:D_SOD-123,,,PMEG4010
-D6,1,amber,,,LED_SMD:LED_0805_2012Metric,,,
-D7,1,blue,,,LED_SMD:LED_0805_2012Metric,,,
-"D8,D9",2,SMAJ26CA,,,Diode_SMD:D_SMA,,,Littelfuse SMAJ26CA
+"D6,D7",2,SMAJ26CA,,,Diode_SMD:D_SMA,,,Littelfuse SMAJ26CA
+"D10,D12,D14,D8",4,SMAJ40CA,,,Diode_SMD:D_SMA,,,Littelfuse SMAJ40CA
+"D11,D13,D15,D16,D9",5,BAT54S,,,Package_TO_SOT_SMD:SOT-23,,,BAT54S
 F1,1,2A slow,,,Fuse:Fuse_1206_3216Metric,,,Littelfuse 0466002.NR
 FB1,1,600R @ 100MHz 3A,,,Inductor_SMD:L_1206_3216Metric,,,Wurth 742792625
 FB2,1,600R @ 100MHz 2A,,,Inductor_SMD:L_0805_2012Metric,,,Wurth 742792022
@@ -33,7 +31,7 @@ J3,1,UART0,,,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,,,
 J4,1,I2C / Qwiic,,,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,,,
 J5,1,SPI,,,Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical,,,
 J6,1,WS2812,,,Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical,,,
-J7,1,Spare IO,,,Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical,,,
+J7,1,Spare IO,,,Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical,,,
 J8,1,Rail break-out,,,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,,,
 J9,1,microSD push-pull,,,Connector_Card:microSD_HC_Hirose_DM3D-SF,,C719027,Hirose DM3D-SF
 JP1,1,TERM (default ON),,,Jumper:SolderJumper-2_P1.3mm_Bridged_Pad1.0x1.5mm,,,
@@ -57,27 +55,26 @@ PF1,1,0.2A hold / 0.4A trip,,,Resistor_SMD:R_1206_3216Metric,,,Bourns MF-MSMF020
 Q1,1,100V 6.8mOhm N-ch,,,Package_TO_SOT_SMD:TO-252-3_TabPin2,,C88066,Infineon IPD068N10N3G
 Q2,1,-20V 2.3A P-ch,,,Package_TO_SOT_SMD:SOT-23,,,DMG2301L
 Q3,1,60V 300mA N-ch,,,Package_TO_SOT_SMD:SOT-23,,,2N7002
-"R1,R11,R14,R3,R30,R32,R5,R68,R8,R9",10,100k,,,Resistor_SMD:R_0805_2012Metric,,,
+"R1,R11,R14,R28,R3,R30,R5,R66,R8,R9",10,100k,,,Resistor_SMD:R_0805_2012Metric,,,
 R10,1,20.5k,,,Resistor_SMD:R_0805_2012Metric,,,
 R12,1,57.6k,,,Resistor_SMD:R_0805_2012Metric,,,
 R13,1,95.3k,,,Resistor_SMD:R_0805_2012Metric,,,
-"R15,R22,R31",3,1k,,,Resistor_SMD:R_0805_2012Metric,,,
-"R16,R17,R24,R27,R28,R29,R39,R40,R41,R42,R43,R45",12,10k,,,Resistor_SMD:R_0805_2012Metric,,,
+"R15,R29",2,1k,,,Resistor_SMD:R_0805_2012Metric,,,
+"R16,R17,R22,R25,R26,R27,R37,R38,R39,R40,R41,R43",12,10k,,,Resistor_SMD:R_0805_2012Metric,,,
 "R18,R19",2,5.1k,,,Resistor_SMD:R_0805_2012Metric,,,
 R2,1,44.2k,,,Resistor_SMD:R_0805_2012Metric,,,
 "R20,R21",2,4.7k,,,Resistor_SMD:R_0805_2012Metric,,,
-R23,1,150,,,Resistor_SMD:R_0805_2012Metric,,,
-"R25,R33,R34,R35,R36,R37,R38",7,33,,,Resistor_SMD:R_0805_2012Metric,,,
-R26,1,100,,,Resistor_SMD:R_0805_2012Metric,,,
+"R23,R31,R32,R33,R34,R35,R36",7,33,,,Resistor_SMD:R_0805_2012Metric,,,
+R24,1,100,,,Resistor_SMD:R_0805_2012Metric,,,
 "R4,R6",2,31.6k,,,Resistor_SMD:R_0805_2012Metric,,,
-R44,1,47k,,,Resistor_SMD:R_0805_2012Metric,,,
-"R46,R47",2,60.4,,,Resistor_SMD:R_0805_2012Metric,,,
-"R48,R53,R58,R63",4,1k,,0.1%,Resistor_SMD:R_0805_2012Metric,,,
-"R49,R54,R59,R64",4,2.49k,,,Resistor_SMD:R_0805_2012Metric,,,
-"R50,R55,R60,R65",4,10k,,0.1%,Resistor_SMD:R_0805_2012Metric,,,
-"R51,R56,R61,R66",4,15k,,0.1%,Resistor_SMD:R_0805_2012Metric,,,
-"R52,R57,R62,R67",4,2.21k,,0.1%,Resistor_SMD:R_0805_2012Metric,,,
-R69,1,8.2k,,,Resistor_SMD:R_0805_2012Metric,,,
+R42,1,47k,,,Resistor_SMD:R_0805_2012Metric,,,
+"R44,R45",2,60.4,,,Resistor_SMD:R_0805_2012Metric,,,
+"R46,R51,R56,R61",4,1k,,0.1%,Resistor_SMD:R_0805_2012Metric,,,
+"R47,R52,R57,R62",4,2.49k,,,Resistor_SMD:R_0805_2012Metric,,,
+"R48,R53,R58,R63",4,10k,,0.1%,Resistor_SMD:R_0805_2012Metric,,,
+"R49,R54,R59,R64",4,15k,,0.1%,Resistor_SMD:R_0805_2012Metric,,,
+"R50,R55,R60,R65",4,2.21k,,0.1%,Resistor_SMD:R_0805_2012Metric,,,
+R67,1,8.2k,,,Resistor_SMD:R_0805_2012Metric,,,
 R7,1,121k,,,Resistor_SMD:R_0805_2012Metric,,,
 SW1,1,RESET,,,Button_Switch_SMD:SW_SPST_TL3342,,,TL3342F160QG
 SW2,1,BOOT,,,Button_Switch_SMD:SW_SPST_TL3342,,,TL3342F160QG

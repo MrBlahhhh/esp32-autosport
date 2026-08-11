@@ -565,7 +565,9 @@ part(pw, "D", "Device:D_Zener", "SMAJ6.0A", SMA, {"1": "+5VS", "2": "GND"},
      "Clamps harness-injected transients on the sensor 5V. 6.0V standoff, "
      "not 5.0V: a 5.0V part on a 5.0V rail leaks up to 800uA continuously")
 
-part(pw, "D", "Device:LED", "green", LED0805, {"1": "PWR_LED_K", "2": "+3V3"}, note="Power indicator")
+part(pw, "D", "Device:LED", "green", LED0805, {"1": "PWR_LED_K", "2": "+3V3"},
+     note="The board's only LED: +3V3 is up, so the whole supply chain came "
+          "through -- battery, ideal diode, and both converters")
 R(pw, "1k", "PWR_LED_K", "GND")
 
 for net in ["+VBAT", "+5V", "+3V3", "+5VS", "GND"]:
@@ -583,7 +585,7 @@ part(mc, "U", "RF_Module:ESP32-S3-WROOM-1", "ESP32-S3-WROOM-1-N16R8",
      {
          "1": "GND", "2": "+3V3", "3": "MCU_EN",
          "4": "AIN3", "5": "AIN4", "6": "VBAT_SNS", "7": "SD_PWR_EN",
-         "8": "LED1", "9": "LED2", "10": "CAN_TX", "11": "CAN_RX",
+         "8": "IO15", "9": "IO16", "10": "CAN_TX", "11": "CAN_RX",
          "12": "SD_CD", "13": "USB_DM", "14": "USB_DP",
          "15": "IO3", "16": "IO46",
          "17": "SD_D3", "18": "SD_D2", "19": "SD_D1", "20": "SD_D0",
@@ -646,12 +648,6 @@ part(mc, "J", "Connector_Generic:Conn_01x04", "I2C / Qwiic", HDR4,
 R(mc, "4.7k", "+3V3", "I2C_SDA")
 R(mc, "4.7k", "+3V3", "I2C_SCL")
 
-R(mc, "1k", "LED1", "LED1_A")
-part(mc, "D", "Device:LED", "amber", LED0805, {"1": "GND", "2": "LED1_A"})
-R(mc, "150", "LED2", "LED2_A",
-  note="Blue Vf sits close to 3.288V, so 1k here gave about 0.19mA against "
-       "the amber channel's 1.3mA. Fit an emitter with Vf <= 2.9V")
-part(mc, "D", "Device:LED", "blue", LED0805, {"1": "GND", "2": "LED2_A"})
 
 # SPI breakout for MCP2515 / CC1101 / MAX6675 / etc.
 part(mc, "J", "Connector_Generic:Conn_01x06", "SPI", HDR6,
@@ -693,10 +689,13 @@ part(mc, "J", "Connector_Generic:Conn_01x03", "WS2812", HDR3,
 R(mc, "10k", "IO3", "GND", note="Strapping pin held low at boot")
 R(mc, "10k", "IO45", "GND", note="Strapping pin: VDD_SPI = 3.3V")
 R(mc, "10k", "IO46", "GND", note="Strapping pin: normal boot mode")
-part(mc, "J", "Connector_Generic:Conn_01x03", "Spare IO", HDR3,
-     {"1": "IO3", "2": "IO45", "3": "IO46"},
-     note="IO3/IO45/IO46 are strapping pins, each with a 10k pull-down. "
-          "Anything attached must not fight it at boot")
+part(mc, "J", "Connector_Generic:Conn_01x06", "Spare IO", HDR6,
+     {"1": "IO3", "2": "IO45", "3": "IO46",
+      "4": "IO15", "5": "IO16", "6": "GND"},
+     note="IO3/IO45/IO46 are strapping pins, each with a 10k pull-down -- "
+          "anything attached must not fight them at boot. IO15/IO16 are "
+          "ordinary GPIOs, free since the status LEDs came off. The ground "
+          "pin is here so a probe or a ribbon has a return")
 part(mc, "J", "Connector_Generic:Conn_01x04", "Rail break-out", HDR4,
      {"1": "+5V", "2": "+3V3", "3": "GND", "4": "GND"})
 
@@ -1162,7 +1161,11 @@ PRO_TEMPLATE = """{
       {"bus_width": 12, "clearance": 0.2, "diff_pair_gap": 0.2, "diff_pair_via_gap": 0.25,
        "diff_pair_width": 0.25, "line_style": 0, "microvia_diameter": 0.3, "microvia_drill": 0.1,
        "name": "CAN", "pcb_color": "rgba(0, 0, 0, 0.000)", "schematic_color": "rgba(0, 0, 0, 0.000)",
-       "track_width": 0.25, "via_diameter": 0.6, "via_drill": 0.3, "wire_width": 6}
+       "track_width": 0.25, "via_diameter": 0.6, "via_drill": 0.3, "wire_width": 6},
+      {"bus_width": 12, "clearance": 0.2, "diff_pair_gap": 0.25, "diff_pair_via_gap": 0.25,
+       "diff_pair_width": 0.2, "line_style": 0, "microvia_diameter": 0.3, "microvia_drill": 0.1,
+       "name": "Fine", "pcb_color": "rgba(0, 0, 0, 0.000)", "schematic_color": "rgba(0, 0, 0, 0.000)",
+       "track_width": 0.2, "via_diameter": 0.5, "via_drill": 0.25, "wire_width": 6}
     ],
     "meta": {"version": 3},
     "net_colors": null,
@@ -1181,6 +1184,8 @@ PRO_TEMPLATE = """{
       {"netclass": "Power", "pattern": "SD_VDD"},
       {"netclass": "Power", "pattern": "LED_5V"},
       {"netclass": "Power", "pattern": "VSENS_F"},
+      {"netclass": "Fine", "pattern": "USB_CC1"},
+      {"netclass": "Fine", "pattern": "USB_CC2"},
       {"netclass": "CAN", "pattern": "CAN_H"},
       {"netclass": "CAN", "pattern": "CAN_L"},
       {"netclass": "CAN", "pattern": "CANH_T"},

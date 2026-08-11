@@ -40,7 +40,8 @@ import generate_schematic as sch  # noqa: E402
 # ------------------------------------------------------------------ setup ----
 
 BOARD_W = 84.0
-BOARD_H = 80.0   # 74 -> 80 to house the Rev B additions
+BOARD_H = 84.0   # 74 -> 80 for the Rev B parts, 80 -> 84 to put the
+                 # sensor-5V block on the same side as what it feeds
 FILLET = 3.0
 OUT = os.path.join(PROJ, "esp32s3-can-sd-logger.kicad_pcb")
 PRO = os.path.join(PROJ, "esp32s3-can-sd-logger.kicad_pro")
@@ -130,16 +131,14 @@ FIXED = {
     # case opening sets plug access anyway.
     "HRO TYPE-C-31-M-12":       (76.0, 8.0, 270),   # right edge, opening out
     "Hirose DM3D-SF":           (75.0, 41.0, 270),  # right edge, card out
-    "value:Spare IO":           (10.0, 3.0, 90),    # top edge
-    "value:SPI":                (21.7, 3.0, 90),    # top edge
-    "value:UART0":              (26.0, 77.5, 90),   # bottom edge
-    "value:I2C / Qwiic":        (41.0, 77.5, 90),
-    "value:Rail break-out":     (56.0, 77.5, 90),
-    "value:WS2812":             (70.5, 77.5, 90),   # shift-light strip
+    "value:Spare IO":           (10.0, 3.0, 90),    # top edge, clear of H1
+    "value:SPI":                (27.5, 3.0, 90),    # top edge
+    "value:UART0":              (26.0, 81.5, 90),   # bottom edge
+    "value:I2C / Qwiic":        (41.0, 81.5, 90),
+    "value:Rail break-out":     (56.0, 81.5, 90),
+    "value:WS2812":             (70.5, 81.5, 90),   # shift-light strip
     "value:RESET":              (78.0, 56.5, 0),    # right edge, case access
     "value:BOOT":               (78.0, 63.5, 0),
-    "value:amber":              (75.5, 50.8, 0),    # status LEDs by the edge
-    "value:blue":               (72.0, 50.8, 0),
 }
 
 # The two LM5164 buck islands, stacked mid-board left of the SD socket, with
@@ -201,17 +200,19 @@ ZONES = [
     ("ch2",       (18.0,  7.0,  8.0, 28.0), lambda p, n, s: n & {"AIN2_A", "AIN2_PU", "AIN2_R1", "AIN2_R2", "AIN2_IN", "AIN2"}),
     ("ch3",       (26.5,  7.0,  8.0, 28.0), lambda p, n, s: n & {"AIN3_A", "AIN3_PU", "AIN3_R1", "AIN3_R2", "AIN3_IN", "AIN3"}),
     ("ch4",       (34.6,  7.0,  7.6, 28.0), lambda p, n, s: n & {"AIN4_A", "AIN4_PU", "AIN4_R1", "AIN4_R2", "AIN4_IN", "AIN4"}),
-    ("ws2812",    (57.5, 68.8, 16.0,  6.0), lambda p, n, s: n & {"LED_DIN_MCU", "LED_DIN_A", "LED_DIN", "LED_5V"}),
-    ("ledr",      (78.5, 48.7,  5.0,  4.6), lambda p, n, s: n & {"LED1_A", "LED2_A"}),
+    ("ws2812",    (57.5, 69.8, 16.0,  9.6), lambda p, n, s: n & {"LED_DIN_MCU", "LED_DIN_A", "LED_DIN", "LED_5V"}),
     ("usb",       (62.0, 14.2, 13.0, 10.8), lambda p, n, s: n & {"USB_DP_CON", "USB_DM_CON", "USB_CC1", "USB_CC2", "VBUS_IN", "VBUS", "USB_DP", "USB_DM"}),
     ("sdpwr",     (59.0, 49.3, 11.0,  8.5), lambda p, n, s: n & {"SD_PG", "SD_EN_G", "SD_PWR_EN"}),
     ("sd",        (49.8, 21.4, 13.2, 15.0), lambda p, n, s: s == "SD Card"),
     ("can",       ( 9.5, 28.2, 21.0, 15.0), lambda p, n, s: s == "CAN"),
-    ("sens5v",    (59.0, 59.8, 14.5,  6.9), lambda p, n, s: n & {"VSENS_F", "+5VS"} and s == "Power"),
+    ("sens5v",    ( 9.5, 69.8, 20.0,  9.6), lambda p, n, s: n & {"VSENS_F", "+5VS"} and s == "Power"),
     ("frontend",  ( 9.2, 43.3, 24.4, 25.0), lambda p, n, s: s == "Power" and n & {"VBAT_IN", "VBAT_F", "VBAT_FB", "GATE_RB", "VCAP", "VBAT_UVLO", "+VBAT"}),
-    ("strap",     (48.0, 69.6,  9.5,  4.4), lambda p, n, s: n & {"IO3", "IO45", "IO46"}),
+    # IO3/IO45/IO46 run from the module's south pad row to J7 at the top
+    # left. Pull-downs parked in the bottom band left R29 needing a run
+    # the length of the board; put them on the path instead.
+    ("strap",     (42.6, 20.8,  6.6,  7.6), lambda p, n, s: n & {"IO3", "IO45", "IO46"}),
     ("mcu_misc",  (63.0, 25.6, 13.0, 10.0), lambda p, n, s: s == "MCU"),
-    ("pwr_misc",  ( 9.5, 69.6, 37.0,  5.4), lambda p, n, s: True),
+    ("pwr_misc",  (31.0, 69.8, 15.5,  9.6), lambda p, n, s: True),
 ]
 
 
