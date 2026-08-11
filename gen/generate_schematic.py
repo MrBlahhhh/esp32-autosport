@@ -309,6 +309,41 @@ def power_placement(libs, lib_id, ex, ey, d):
     return snap(ex), snap(ey), 0
 
 
+# --------------------------------------------------------------- wiring ----
+# A net drawn as two name labels is correct and unreadable. Where a net has
+# exactly two pins in the whole design and both are on one sheet, the two
+# parts can simply be placed next to each other and joined with a wire --
+# which is what the connection actually is. Everything else (rails, shared
+# nodes, anything crossing a sheet) keeps a symbol or a label, because those
+# genuinely are one-to-many.
+
+def pin_count(net):
+    n = 0
+    for sh in SHEETS:
+        for p in sh["parts"]:
+            n += sum(1 for v in p["pins"].values() if v == net)
+    return n
+
+
+def wire_pairs(sh):
+    """[(partA, pinA, partB, pinB, net)] for this sheet's two-pin nets."""
+    here = [p for p in sh["parts"] if not p["prefix"].startswith("#")]
+    out, used = [], set()
+    for net in sorted({v for p in here for v in p["pins"].values()}):
+        if net in RAILS or pin_count(net) != 2:
+            continue
+        ends = [(p, num) for p in here for num, v in p["pins"].items() if v == net]
+        if len(ends) != 2:
+            continue                      # the other end is on another sheet
+        (pa, na), (pb, nb) = ends
+        if pa["ref"] in used or pb["ref"] in used:
+            continue                      # one cluster per part keeps it simple
+        used.add(pa["ref"])
+        used.add(pb["ref"])
+        out.append((pa, na, pb, nb, net))
+    return out
+
+
 def label_rotation(direction):
     return {(1, 0): 0, (-1, 0): 180, (0, -1): 90, (0, 1): 270}[direction]
 
@@ -859,7 +894,7 @@ def assign_refs():
 PAGE_W, PAGE_H = 420.0, 297.0
 MARGIN_X, MARGIN_TOP, MARGIN_BOT = 12.0, 18.0, 22.0
 STUB = 5.08
-LABEL_ALLOWANCE = 21.0   # rails are power symbols now, not long labels
+LABEL_ALLOWANCE = 15.0   # rails are power symbols and pairs are wired now
 GRID = 1.27
 
 
@@ -876,6 +911,61 @@ def symbol_extent(libs, lib_id, theta):
         xs += [off[0], off[0] + d[0] * STUB]
         ys += [off[1], off[1] + d[1] * STUB]
     return min(xs), max(xs), min(ys), max(ys)
+
+
+WIRE_GAP = 8.89          # host pin to satellite pin, with room for the
+                         # net name to sit on the wire between them
+
+
+def orient_two_pin(libs, p, num, want):
+    """Rotation that makes pin `num` of a two-pin part face `want`."""
+    for theta in (0, 90, 180, 270):
+        for n, _nm, lx, ly, ang, hid in libs.pins(p["lib_id"]):
+            if hid or n != num:
+                continue
+            _off, d = pin_geometry(lx, ly, ang, theta)
+            if d == want:
+                return theta
+    return p.get("theta", 0)
+
+
+def attach_satellites(libs, sh):
+    """Park each two-pin partner right on the pin it serves.
+
+    The satellite sits WIRE_GAP beyond the host pin, facing back at it, so
+    the connection is a single straight wire rather than a pair of labels.
+    """
+    sats = {}
+    for pa, na, pb, nb, net in wire_pairs(sh):
+        host, hnum, sat, snum = pa, na, pb, nb
+        if len(pa["pins"]) < len(pb["pins"]):
+            host, hnum, sat, snum = pb, nb, pa, na
+        if len(sat["pins"]) != 2:
+            continue                       # only two-pin parts travel
+        hoff = hd = None
+        for n, _nm, lx, ly, ang, hid in libs.pins(host["lib_id"]):
+            if not hid and n == hnum:
+                hoff, hd = pin_geometry(lx, ly, ang, host["theta"])
+        if hd is None:
+            continue
+        theta = orient_two_pin(libs, sat, snum, (-hd[0], -hd[1]))
+        soff = None
+        for n, _nm, lx, ly, ang, hid in libs.pins(sat["lib_id"]):
+            if not hid and n == snum:
+                soff, _ = pin_geometry(lx, ly, ang, theta)
+        if soff is None:
+            continue
+        sat["theta"] = theta
+        sat["ext"] = symbol_extent(libs, sat["lib_id"], theta)
+        sats[sat["ref"]] = {
+            "host": host["ref"], "theta": theta,
+            "dx": hoff[0] + hd[0] * WIRE_GAP - soff[0],
+            "dy": hoff[1] + hd[1] * WIRE_GAP - soff[1],
+            "wire": (hoff, hd, soff),
+            "host_pin": hnum, "sat_pin": snum, "net": net,
+        }
+    sh["_sats"] = sats
+    return sats
 
 
 def place(libs):
@@ -903,9 +993,21 @@ def place(libs):
                     down = STUB + 3.81
             p["_up"], p["_down"] = up, down
 
+        # Satellites ride with their host, so they are not packed separately.
+        sats = attach_satellites(libs, sh)
+        for ref, info in sats.items():
+            host = next(q for q in sh["parts"] if q["ref"] == info["host"])
+            sx0, sx1, sy0, sy1 = next(q for q in sh["parts"]
+                                      if q["ref"] == ref)["ext"]
+            hx0, hx1, hy0, hy1 = host["ext"]
+            host["ext"] = (min(hx0, sx0 + info["dx"]), max(hx1, sx1 + info["dx"]),
+                           min(hy0, sy0 + info["dy"]), max(hy1, sy1 + info["dy"]))
+
         columns, col, y = [], [], MARGIN_TOP
         usable = PAGE_H - MARGIN_TOP - MARGIN_BOT
         for p in sh["parts"]:
+            if p["ref"] in sats:
+                continue
             x0, x1, y0, y1 = p["ext"]
             # Leave room for the reference and value text above and below the
             # body, otherwise adjacent rows of passives print on top of each
@@ -928,6 +1030,12 @@ def place(libs):
                 p["x"] = snap(cx)
                 p["y"] = snap(p["_y"] - p["ext"][2])
             x = cx + right + LABEL_ALLOWANCE + 6.35
+        # Satellites take their position from the host they hang off.
+        for ref, info in sats.items():
+            host = next(q for q in sh["parts"] if q["ref"] == info["host"])
+            sat = next(q for q in sh["parts"] if q["ref"] == ref)
+            sat["x"] = snap(host["x"] + info["dx"])
+            sat["y"] = snap(host["y"] + info["dy"])
         sh["width_used"] = x
         # The packer wraps on height but never on width, so a sheet that grew
         # wide simply ran off the page: two symbols on the power sheet landed
@@ -1001,6 +1109,13 @@ def emit_symbol(libs, sh, p, sheet_uuid):
     return "\n".join(lines)
 
 
+LOCAL_LABEL = (
+    '  (label "%s" (at %s %s 0)\n'
+    "    (effects (font (size 1.27 1.27)) (justify left bottom))\n"
+    "    (uuid %s)\n  )"
+)
+
+
 PWR_COUNTER = [0]
 
 
@@ -1039,6 +1154,33 @@ def emit_sheet(libs, sh, sheet_uuid, page):
 
     wires, labels, syms, ncs = [], [], [], []
     pwr_n = [PWR_COUNTER[0]]
+
+    # Satellite links become a drawn wire, and both ends lose their label:
+    # the connection is on the page now, so naming it twice adds nothing.
+    sats = sh.get("_sats", {})
+    joined, by_ref = set(), {q["ref"]: q for q in sh["parts"]}
+    for ref, info in sats.items():
+        host, sat = by_ref[info["host"]], by_ref[ref]
+        hoff, _hd, soff = info["wire"]
+        hx, hy = host["x"] + hoff[0], host["y"] + hoff[1]
+        sx, sy = sat["x"] + soff[0], sat["y"] + soff[1]
+        wires.append(
+            "  (wire (pts (xy %s %s) (xy %s %s))\n"
+            "    (stroke (width 0) (type default))\n"
+            "    (uuid %s)\n  )"
+            % (mm(hx), mm(hy), mm(sx), mm(sy),
+               det_uuid("link:%s:%s:%s" % (sh["file"], info["host"], ref))))
+        # Both pin labels go and the name moves onto the wire, which is where
+        # a schematic puts it. Dropping both without naming the wire would let
+        # KiCad autoname the net Net-(U2-BST) and lose the meaning.
+        labels.append(
+            # The anchor has to sit exactly on the wire or KiCad treats the
+            # label as floating; "left bottom" lifts the text clear instead.
+            LOCAL_LABEL % (info["net"], mm(hx + (sx - hx) * 0.18),
+                           mm(hy + (sy - hy) * 0.18),
+                           det_uuid("wlbl:%s:%s" % (sh["file"], ref))))
+        joined.add((info["host"], info["host_pin"]))
+        joined.add((ref, info["sat_pin"]))
     for p in sh["parts"]:
         syms.append(emit_symbol(libs, sh, p, sheet_uuid))
         for num, _, lx, ly, ang, hidden in libs.pins(p["lib_id"]):
@@ -1053,6 +1195,8 @@ def emit_sheet(libs, sh, sheet_uuid, page):
             net = p["pins"].get(num)
             if net is None:
                 continue
+            if (p["ref"], num) in joined:
+                continue                   # already drawn as a wire
             ex, ey = px + d[0] * STUB, py + d[1] * STUB
             wires.append(
                 "  (wire (pts (xy %s %s) (xy %s %s))\n"
