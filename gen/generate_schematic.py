@@ -958,6 +958,20 @@ def match_part(sh, value, nets, taken):
     return None
 
 
+def pin_clearance(libs, part):
+    """How far the text has to stand off, so it clears any vertical stub."""
+    up = down = 0.0
+    for _n, _nm, lx, ly, ang, hid in libs.pins(part["lib_id"]):
+        if hid:
+            continue
+        _o, dv = pin_geometry(lx, ly, ang, part["theta"])
+        if dv == (0, -1):
+            up = STUB + 3.81
+        elif dv == (0, 1):
+            down = STUB + 3.81
+    part["_bup"], part["_bdown"] = up, down
+
+
 def apply_blocks(libs, sh):
     """Place the hand-drawn blocks that live on this sheet.
 
@@ -974,6 +988,7 @@ def apply_blocks(libs, sh):
             continue
         anchor["_block"] = True
         anchor["_own_ext"] = anchor["ext"]
+        pin_clearance(libs, anchor)
         members = []
         for value, nets, dx, dy, rot in blk["parts"]:
             part = match_part(sh, value, nets, taken)
@@ -985,6 +1000,7 @@ def apply_blocks(libs, sh):
             part["ext"] = symbol_extent(libs, part["lib_id"], rot)
             part["_up"] = part["_down"] = 0.0
             part["_block"] = True
+            pin_clearance(libs, part)
             members.append((part, dx, dy))
         placed.append({"blk": blk, "anchor": anchor, "members": members})
         for part, dx, dy in members:
@@ -1203,11 +1219,32 @@ def emit_symbol(libs, sh, p, sheet_uuid):
         # block, so field placement has to use the part's own body -- else
         # the anchor's reference floats off at the top of the drawing.
         x0, x1, y0, y1 = p.get("_own_ext", p["ext"])
-        if x1 - x0 > y1 - y0:
-            ref_y, val_y = p["y"] + y0 - 1.27, p["y"] + y1 + 2.03
+        # Beside only for a part decidedly taller than it is wide. An IC that
+        # is square-ish has pins out of both sides, and its fields then print
+        # over the very labels those pins carry -- "USBLC6-2SC6" straight
+        # through USB_DM. Above and below is where the room is.
+        if y1 - y0 <= 1.6 * (x1 - x0):
+            # A pin leaving the top or bottom takes a stub and then a label
+            # or a power symbol with it, and the text lands on that: the
+            # buffer printed "74AHCT1G125" straight through the ground
+            # symbol under it. Clear the whole stub, as the packer does.
+            ref_y = p["y"] + y0 - 1.27 - p.get("_bup", 0.0)
+            val_y = p["y"] + y1 + 2.03 + p.get("_bdown", 0.0)
         else:
             ref_x = val_x = p["x"] + x1 + 1.27
             ref_y, val_y = p["y"] - 1.27, p["y"] + 1.78
+    # A power symbol's name belongs on the far side of its body from the pin
+    # it hangs off, or it lands on whatever that pin belongs to: "+3V3"
+    # printed over "R16" on the very resistor it was feeding.
+    if p.get("_pwr_dir"):
+        dx, dy = p["_pwr_dir"]
+        if dy < 0:
+            val_y = p["y"] + y0 - 2.0
+        elif dy > 0:
+            val_y = p["y"] + y1 + 2.0
+        else:
+            val_y = p["y"] + 1.27
+            val_x = p["x"] + (x1 + 2.0 if dx > 0 else x0 - 2.0)
     # A power symbol's reference (#PWR003) is noise -- the rail name in the
     # Value field is the label. KiCad hides these by convention and so do we,
     # along with the flags'.
@@ -1450,6 +1487,7 @@ def emit_sheet(libs, sh, sheet_uuid, page):
                 "prefix": "#PWR", "ref": "#PWR%03d" % pwr_n[0],
                 "x": sx, "y": sy, "theta": stheta,
                 "ext": symbol_extent(libs, lib_id, stheta),
+                "_pwr_dir": facing,
             }, sheet_uuid))
 
     # Satellite links become a drawn wire, and both ends lose their label:
@@ -1517,6 +1555,7 @@ def emit_sheet(libs, sh, sheet_uuid, page):
                     "prefix": "#PWR", "ref": "#PWR%03d" % pwr_n[0],
                     "x": sx, "y": sy, "theta": stheta,
                     "ext": symbol_extent(libs, lib_id, stheta),
+                    "_pwr_dir": d,
                 }, sheet_uuid))
                 continue
             if net in crossing:

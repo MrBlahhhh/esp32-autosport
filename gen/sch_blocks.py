@@ -148,6 +148,87 @@ def channel(n):
     }
 
 
+MODULE = {
+    # The module and the parts that only exist to serve it: its own
+    # decoupling on a 3V3 rail across the top, and the two strapping pins
+    # taken out sideways -- EN up and to the left with its pull-up, delay
+    # cap and reset button, IO0 down and to the left with its pull-up and
+    # the boot button. Everything else on this sheet reaches the module by
+    # name, which is right: those are signals going elsewhere.
+    "sheet": "MCU",
+    "anchor": ("ESP32-S3-WROOM-1-N16R8", None),
+    "parts": [
+        # value      nets                       dx      dy   rot
+        ("10uF",  {"+3V3", "GND"},           -20.32, -41.91,   0),
+        ("100nF", {"+3V3", "GND"},           -12.70, -41.91,   0),
+        ("100nF", {"+3V3", "GND"},            -5.08, -41.91,   0),
+        ("10k",   {"+3V3", "MCU_EN"},        -43.18, -54.61,   0),
+        ("1uF",   {"MCU_EN", "GND"},         -50.80, -46.99,   0),
+        ("RESET", {"MCU_EN", "GND"},         -66.04, -50.80, 180),
+        ("10k",   {"+3V3", "MCU_BOOT"},      -50.80,  -8.89,   0),
+        ("BOOT",  {"MCU_BOOT", "GND"},       -68.58,  -5.08, 180),
+    ],
+    # Every other pin down the module's left edge takes a 5.08 mm stub to a
+    # label, so the stub ends all sit on x = -20.32 and the label text runs
+    # out to about -32. A wire crossing that band shorts whatever it lands
+    # on -- the first attempt tied IO0 to four of them -- so EN and IO0 both
+    # travel out on their own pin row and only turn once they are clear.
+    "wires": [
+        [(-20.32, -45.72), (0.00, -45.72), (0.00, -27.94)],     # 3V3 in
+        [(-16.51, -45.72), (-16.51, -50.80)],                   # rail symbol
+        [(-15.24, -22.86), (-38.10, -22.86), (-38.10, -50.80),
+         (-60.96, -50.80)],                                     # EN
+        [(-15.24, -17.78), (-45.72, -17.78), (-45.72, -5.08),
+         (-63.50, -5.08)],                                      # IO0 / boot
+    ],
+    "junctions": [(-12.70, -45.72), (-5.08, -45.72), (-16.51, -45.72),
+                  (-43.18, -50.80), (-50.80, -50.80), (-50.80, -5.08)],
+    "rails": [("+3V3", -16.51, -50.80, (0, -1))],
+    "labels": {
+        "MCU_EN": (-38.10, -35.56, 0),
+        "MCU_BOOT": (-45.72, -11.43, 0),
+    },
+
+}
+
+
+WS2812 = {
+    # The shift-light output, in signal order: series damping into the level
+    # shifter that lifts 3.3 V to the 5 V the LEDs actually want, its bypass
+    # cap on the supply pin, another series resistor on the way out, and the
+    # strip's own 5 V through a resettable fuse so a shorted strip does not
+    # take the rail down with it.
+    "sheet": "MCU",
+    "anchor": ("74AHCT1G125", None),
+    "parts": [
+        # value        nets                             dx      dy   rot
+        ("33",     {"LED_DIN_MCU", "LED_DIN_A"},     -27.94,   0.00,  90),
+        ("100nF",  {"+5V", "GND"},                   -12.70, -17.78, 270),
+        ("100",    {"LED_DIN", "LED_DIN_J"},          27.94,   0.00,  90),
+        ("0.5A hold", {"+5V", "LED_5V"},              25.40, -10.16,  90),
+        ("WS2812", {"LED_5V", "LED_DIN_J", "GND"},    50.80,   0.00,   0),
+    ],
+    "wires": [
+        [(-24.13, 0.00), (-15.24, 0.00)],                       # into the gate
+        [(-5.08, -10.16), (-5.08, -17.78)],                     # VCC
+        [(-8.89, -17.78), (-5.08, -17.78)],                     # bypass cap
+        [(-5.08, -17.78), (-5.08, -22.86)],                     # rail symbol
+        [(12.70, 0.00), (24.13, 0.00)],                         # out of the gate
+        [(31.75, 0.00), (45.72, 0.00)],                         # to the strip
+        [(29.21, -10.16), (36.83, -10.16), (36.83, -2.54),
+         (45.72, -2.54)],                                       # fused 5V
+    ],
+    "junctions": [(-5.08, -17.78)],
+    "rails": [("+5V", -5.08, -22.86, (0, -1))],
+    "labels": {
+        "LED_DIN_A": (-21.59, 0.00, 0),
+        "LED_DIN": (13.97, 0.00, 0),
+        "LED_DIN_J": (32.39, 0.00, 0),
+        "LED_5V": (31.75, -10.16, 0),
+    },
+}
+
+
 USB = {
     # Receptacle on the left with everything leaving to the right, in the
     # order the port uses it: VBUS through the polyfuse to the OR-ing diode
@@ -186,7 +267,7 @@ USB = {
         "VBUS_IN": (20.32, -15.24, 0),
         "VBUS": (48.26, -15.24, 0),
         "USB_CC1": (20.32, -10.16, 0),
-        "USB_CC2": (27.94, -7.62, 0),
+        "USB_CC2": (17.78, -7.62, 0),
         "USB_DP_CON": (55.88, 5.08, 0),
         "USB_DM_CON": (55.88, 7.62, 0),
     },
@@ -209,11 +290,11 @@ FRONTEND = {
     "parts": [
         # value                 nets                        dx      dy   rot
         ("2A slow",  {"VBAT_IN", "VBAT_F"},              -44.45, -35.56,  90),
-        ("SMCJ40CA", {"VBAT_F", "GND"},                  -33.02, -31.75, 270),
-        ("600R @ 100MHz 3A", {"VBAT_F", "VBAT_FB"},      -20.32, -35.56,  90),
+        ("SMCJ40CA", {"VBAT_F", "GND"},                  -40.64, -31.75, 270),
+        ("600R @ 100MHz 3A", {"VBAT_F", "VBAT_FB"},      -26.67, -35.56,  90),
         ("100V 6.8mOhm N-ch", {"GATE_RB", "VBAT_FB", "+VBAT"},
                                                            0.00, -38.10, 270),
-        ("1uF",      {"VCAP", "VBAT_FB"},                -20.32,   2.54, 270),
+        ("1uF",      {"VCAP", "VBAT_FB"},                -25.40,   8.89, 270),
         ("100nF",    {"VBAT_FB", "GND"},               -12.70, -26.67,   0),
         ("100k",     {"VBAT_FB", "VBAT_UVLO"},           -31.75,  -7.62,   0),
         ("44.2k",    {"VBAT_UVLO", "GND"},               -31.75,   3.81,   0),
@@ -223,8 +304,8 @@ FRONTEND = {
         ("+VBAT",    {"+VBAT"},                           40.64, -35.56,   0),
     ],
     "wires": [
-        [(-40.64, -35.56), (-24.13, -35.56)],                    # fused input
-        [(-16.51, -35.56), (-5.08, -35.56)],                     # FET source
+        [(-40.64, -35.56), (-30.48, -35.56)],                    # fused input
+        [(-22.86, -35.56), (-5.08, -35.56)],                     # FET source
         [(5.08, -35.56), (40.64, -35.56)],                       # +VBAT
         [(33.02, -35.56), (33.02, -41.91)],                      # rail symbol
         [(-7.62, -10.16), (-7.62, -13.97), (-16.51, -13.97),
@@ -233,25 +314,28 @@ FRONTEND = {
          (35.56, -35.56)],                                       # CATHODE sense
         [(0.00, -10.16), (0.00, -16.51), (-8.89, -16.51),
          (-8.89, -45.72), (0.00, -45.72), (0.00, -43.18)],       # gate drive
-        [(-12.70, 2.54), (-16.51, 2.54)],                        # charge pump
-        [(-24.13, 2.54), (-24.13, -20.32)],
+        [(-12.70, 2.54), (-17.78, 2.54), (-17.78, 8.89),
+         (-21.59, 8.89)],                                        # charge pump
+        [(-29.21, 8.89), (-35.56, 8.89), (-35.56, -20.32),
+         (-31.75, -20.32)],
         [(-31.75, -11.43), (-31.75, -20.32), (-16.51, -20.32)],  # UVLO top
         [(-31.75, -3.81), (-31.75, 0.00)],                       # UVLO mid
         [(-31.75, -1.27), (-27.94, -1.27), (-27.94, 5.08),
          (-12.70, 5.08)],                                        # to EN
         [(-16.51, -30.48), (-12.70, -30.48)],                    # anode cap
     ],
-    "junctions": [(-33.02, -35.56), (-16.51, -20.32), (-24.13, -20.32),
+    "junctions": [(-16.51, -35.56),
+                  (-16.51, -20.32),
                   (-16.51, -30.48), (-31.75, -1.27),
                   (12.70, -35.56), (20.32, -35.56), (27.94, -35.56),
                   (33.02, -35.56), (35.56, -35.56)],
     "rails": [("+VBAT", 33.02, -41.91, (0, -1))],
     "labels": {
-        "VBAT_F": (-38.10, -35.56, 0),
-        "VBAT_FB": (-16.51, -24.13, 0),
+        "VBAT_F": (-36.83, -35.56, 0),
+        "VBAT_FB": (-21.59, -35.56, 0),
         "GATE_RB": (-8.89, -30.48, 0),
         "VBAT_UVLO": (-31.75, -2.54, 0),
-        "VCAP": (-15.24, 2.54, 0),
+        "VCAP": (-20.32, 8.89, 0),
     },
 }
 
@@ -364,4 +448,4 @@ BLOCKS = [
          "PG_5V", "33uH 3A", "31.6k", "31.6k", "121k"),
     buck("LM5164 (3V3)", "+3V3", "SW_3V3", "EN_3V3", "RON_3V3", "FB_3V3", "BST_3V3",
          "RAMP_3V3", "PG_3V3", "22uH 3A", "20.5k", "57.6k", "95.3k"),
-] + [channel(n) for n in (1, 2, 3, 4)] + [FRONTEND, CAN, SDCARD, USB]
+] + [channel(n) for n in (1, 2, 3, 4)] + [FRONTEND, CAN, SDCARD, USB, MODULE, WS2812]
