@@ -516,13 +516,22 @@ R(pw, "44.2k", "VBAT_UVLO", "GND",
        "release at 3.5/6.5/8.5V. The earlier 25.5k assumed a 1.2V threshold "
        "and would not have started until 9.8V typical, 12.8V worst case")
 
-# Unidirectional symbol: the A suffix is the unidirectional member of the
-# SMCJ family, and a bidirectional symbol leaves orientation ambiguous at
-# build -- this part backwards is a short across the battery.
-part(pw, "D", "Device:D_Zener", "SMCJ40A", SMC, {"1": "+VBAT", "2": "GND"},
-     "Littelfuse SMCJ40A",
-     "40V standoff / 64.5V clamp @ 1500W: absorbs ISO 7637-2 pulse 5b load "
-     "dump. 40V not 33V so the part stands off the declared 36V input top")
+# Ahead of Q1, not behind it. Clamping downstream of the reverse-battery FET
+# leaves Q1 and the LM74700 exposed to whatever arrives on the harness: on a
+# negative transient Q1 turns off and stands the whole pulse across its
+# drain-source, and ISO 7637-2 pulse 1 (-100V) and 3a (-150V) both exceed its
+# 100V rating. In front of the FET the clamp catches those first.
+#
+# Bidirectional, because a unidirectional part here would forward-conduct on
+# a sustained reverse connection and blow the fuse -- which is exactly the
+# outcome the ideal diode exists to avoid. SMCJ40CA stands off 40V either
+# way, so -14V reverse battery is still Q1's job to block, and only real
+# transients are clamped.
+part(pw, "D", "Device:D_TVS", "SMCJ40CA", SMC, {"1": "VBAT_F", "2": "GND"},
+     "Littelfuse SMCJ40CA",
+     "40V standoff / 64.5V clamp @ 1500W, bidirectional: absorbs ISO 7637-2 "
+     "pulse 5b load dump and the negative pulses, ahead of the FET. 40V not "
+     "33V so the part stands off the declared 36V input top")
 C(pw, "100uF 100V", "+VBAT", "GND", fp="Capacitor_SMD:CP_Elec_10x10.5",
   mpn="Nichicon UCD2A101MNL1GS", polarized=True,
   note="Bulk hold-up; any 100uF >=80V SMD electrolytic on a 10x10.5 land "

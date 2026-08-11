@@ -12,7 +12,7 @@ Qty (1 board),Qty (10 boards),References,Value,Voltage,Tolerance,Footprint,Manuf
 2,20,C14 C7,2.2nF,50V,,Capacitor_SMD:C_0805_2012Metric,,,Bootstrap: datasheet mandates exactly 2.2nF X7R -- a larger value overstresses the internal VCC regulator and damages the device
 2,20,C15 C8,3.3nF,50V,,Capacitor_SMD:C_0805_2012Metric,,,Ramp capacitor CA
 2,20,C16 C9,270pF,50V,,Capacitor_SMD:C_0805_2012Metric,,,Ramp coupling capacitor CB
-1,10,D1,SMCJ40A,,,Diode_SMD:D_SMC,Littelfuse SMCJ40A,,40V standoff / 64.5V clamp @ 1500W: absorbs ISO 7637-2 pulse 5b load dump. 40V not 33V so the part stands off the declared 36V input top
+1,10,D1,SMCJ40CA,,,Diode_SMD:D_SMC,Littelfuse SMCJ40CA,,"40V standoff / 64.5V clamp @ 1500W, bidirectional: absorbs ISO 7637-2 pulse 5b load dump and the negative pulses, ahead of the FET. 40V not 33V so the part stands off the declared 36V input top"
 1,10,D2,3.6V 300mW,,,Diode_SMD:D_SOD-323,onsemi MM3Z3V6T1G,,Rail clamp: an analog input shorted to battery back-feeds ~1.6mA through its BAT54S into +3V3; with the MCU asleep the rail would otherwise float above the ESP32's 3.6V absolute maximum
 1,10,D3,SMAJ6.0A,,,Diode_SMD:D_SMA,Littelfuse SMAJ6.0A,,"Clamps harness-injected transients on the sensor 5V. 6.0V standoff, not 5.0V: a 5.0V part on a 5.0V rail leaks up to 800uA continuously"
 1,10,D4,green,,,LED_SMD:LED_0805_2012Metric,,,"The board's only LED: +3V3 is up, so the whole supply chain came through -- battery, ideal diode, and both converters"

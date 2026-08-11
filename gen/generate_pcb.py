@@ -124,12 +124,14 @@ FIXED = {
     "JST B8B-PH-K-S(LF)(SN)":   (5.0, 18.0, 270),   # sensor harness, left edge
     "JST B4B-PH-K-S(LF)(SN)":   (5.0, 50.0, 270),   # power/CAN harness
     "ESP32-S3-WROOM-1-N16R8":   (52.0, 6.8, 0),     # antenna overhangs top edge
-    # 2.5 mm inboard of flush.  The A/B duplicate pins (D+ on A6/B6, D- on
-    # A7/B7) have to be tied together on copper, and that needs two columns
-    # of vias in the channel between the 0.5 mm-pitch pad row and the edge
-    # keepout -- about 2.4 mm.  The mouth ends ~2 mm inside the outline; the
-    # case opening sets plug access anyway.
-    "HRO TYPE-C-31-M-12":       (76.0, 8.0, 270),   # right edge, opening out
+    # The fab outline runs y -3.65..+3.65 and the signal pads sit at y -4.04,
+    # outside it: the contacts leave the REAR of the shell, so at 0 degrees
+    # the mouth faces +y.  At 270 that pointed the opening back into the
+    # middle of the board.  At 90 the mouth ends ~2 mm inside the right edge
+    # -- the plug approaches over the top of the board, so the last 2 mm of
+    # laminate is not in its way -- and the pad row faces inboard, which is
+    # where the D+/D- via columns and the USBLC6 want to be anyway.
+    "HRO TYPE-C-31-M-12":       (78.35, 8.0, 90),   # right edge, opening out
     "Hirose DM3D-SF":           (75.0, 41.0, 270),  # right edge, card out
     "value:Spare IO":           (10.0, 3.0, 90),    # top edge, clear of H1
     "value:SPI":                (27.5, 3.0, 90),    # top edge

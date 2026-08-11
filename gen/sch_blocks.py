@@ -148,6 +148,114 @@ def channel(n):
     }
 
 
+USB = {
+    # Receptacle on the left with everything leaving to the right, in the
+    # order the port uses it: VBUS through the polyfuse to the OR-ing diode
+    # and its bulk, the CC pull-downs below it, then the two data pairs --
+    # each duplicated on the A and B rows and tied here -- into the ESD
+    # array. D- has to cross D+ once on the way: the connector presents them
+    # in the opposite order to the protection device, and no arrangement of
+    # the two avoids it.
+    "sheet": "MCU",
+    "anchor": ("USB-C", None),
+    "parts": [
+        # value          nets                          dx      dy   rot
+        ("0.5A hold", {"VBUS_IN", "VBUS"},           33.02, -15.24,  90),
+        ("40V 1A",    {"+5V", "VBUS"},               45.72, -19.05, 270),
+        ("10uF",      {"VBUS", "GND"},               57.15, -11.43,   0),
+        ("100nF",     {"VBUS", "GND"},               66.04, -11.43,   0),
+        ("5.1k",      {"USB_CC1", "GND"},            30.48,  -6.35,   0),
+        ("5.1k",      {"USB_CC2", "GND"},            38.10,  -3.81,   0),
+        ("USBLC6-2SC6", {"USB_DP_CON", "USB_DM_CON", "USB_DP", "USB_DM",
+                         "VBUS", "GND"},             76.20,   5.08,   0),
+    ],
+    "wires": [
+        [(15.24, -15.24), (29.21, -15.24)],                     # VBUS in
+        [(36.83, -15.24), (76.20, -15.24), (76.20, 0.00)],      # VBUS
+        [(15.24, -10.16), (30.48, -10.16)],                     # CC1
+        [(15.24, -7.62), (38.10, -7.62)],                       # CC2
+        [(15.24, 5.08), (71.12, 5.08)],                         # D+
+        [(15.24, 2.54), (20.32, 2.54), (20.32, 5.08)],          # D+ A row
+        [(15.24, -2.54), (25.40, -2.54), (25.40, 7.62),
+         (71.12, 7.62)],                                        # D-
+        [(15.24, 0.00), (25.40, 0.00)],                         # D- B row
+    ],
+    "junctions": [(45.72, -15.24), (57.15, -15.24), (66.04, -15.24),
+                  (20.32, 5.08), (25.40, 0.00)],
+    "labels": {
+        "VBUS_IN": (20.32, -15.24, 0),
+        "VBUS": (48.26, -15.24, 0),
+        "USB_CC1": (20.32, -10.16, 0),
+        "USB_CC2": (27.94, -7.62, 0),
+        "USB_DP_CON": (55.88, 5.08, 0),
+        "USB_DM_CON": (55.88, 7.62, 0),
+    },
+
+}
+
+
+FRONTEND = {
+    # Battery in from the left along the top: fuse, transient clamp, ferrite,
+    # then the reverse-battery FET, then the bulk on +VBAT. The LM74700 sits
+    # underneath it with its three pins reaching up to the FET it drives,
+    # which is how the datasheet draws it; the UVLO divider and the charge
+    # pump reservoir hang off the anode side on the left.
+    #
+    # The gate drive crosses the source rail on its way up and around the
+    # FET. That crossing carries no junction and so is not a connection --
+    # the alternative was a longer way round the outside of the whole block.
+    "sheet": "Power",
+    "anchor": ("LM74700-Q1", None),
+    "parts": [
+        # value                 nets                        dx      dy   rot
+        ("2A slow",  {"VBAT_IN", "VBAT_F"},              -44.45, -35.56,  90),
+        ("SMCJ40CA", {"VBAT_F", "GND"},                  -33.02, -31.75, 270),
+        ("600R @ 100MHz 3A", {"VBAT_F", "VBAT_FB"},      -20.32, -35.56,  90),
+        ("100V 6.8mOhm N-ch", {"GATE_RB", "VBAT_FB", "+VBAT"},
+                                                           0.00, -38.10, 270),
+        ("1uF",      {"VCAP", "VBAT_FB"},                -20.32,   2.54, 270),
+        ("100nF",    {"VBAT_FB", "GND"},               -12.70, -26.67,   0),
+        ("100k",     {"VBAT_FB", "VBAT_UVLO"},           -31.75,  -7.62,   0),
+        ("44.2k",    {"VBAT_UVLO", "GND"},               -31.75,   3.81,   0),
+        ("100uF",    {"+VBAT", "GND"},                   12.70, -31.75,   0),
+        ("10uF",     {"+VBAT", "GND"},                   20.32, -31.75,   0),
+        ("100nF",    {"+VBAT", "GND"},                   27.94, -31.75,   0),
+        ("+VBAT",    {"+VBAT"},                           40.64, -35.56,   0),
+    ],
+    "wires": [
+        [(-40.64, -35.56), (-24.13, -35.56)],                    # fused input
+        [(-16.51, -35.56), (-5.08, -35.56)],                     # FET source
+        [(5.08, -35.56), (40.64, -35.56)],                       # +VBAT
+        [(33.02, -35.56), (33.02, -41.91)],                      # rail symbol
+        [(-7.62, -10.16), (-7.62, -13.97), (-16.51, -13.97),
+         (-16.51, -35.56)],                                      # ANODE sense
+        [(7.62, -10.16), (7.62, -17.78), (35.56, -17.78),
+         (35.56, -35.56)],                                       # CATHODE sense
+        [(0.00, -10.16), (0.00, -16.51), (-8.89, -16.51),
+         (-8.89, -45.72), (0.00, -45.72), (0.00, -43.18)],       # gate drive
+        [(-12.70, 2.54), (-16.51, 2.54)],                        # charge pump
+        [(-24.13, 2.54), (-24.13, -20.32)],
+        [(-31.75, -11.43), (-31.75, -20.32), (-16.51, -20.32)],  # UVLO top
+        [(-31.75, -3.81), (-31.75, 0.00)],                       # UVLO mid
+        [(-31.75, -1.27), (-27.94, -1.27), (-27.94, 5.08),
+         (-12.70, 5.08)],                                        # to EN
+        [(-16.51, -30.48), (-12.70, -30.48)],                    # anode cap
+    ],
+    "junctions": [(-33.02, -35.56), (-16.51, -20.32), (-24.13, -20.32),
+                  (-16.51, -30.48), (-31.75, -1.27),
+                  (12.70, -35.56), (20.32, -35.56), (27.94, -35.56),
+                  (33.02, -35.56), (35.56, -35.56)],
+    "rails": [("+VBAT", 33.02, -41.91, (0, -1))],
+    "labels": {
+        "VBAT_F": (-38.10, -35.56, 0),
+        "VBAT_FB": (-16.51, -24.13, 0),
+        "GATE_RB": (-8.89, -30.48, 0),
+        "VBAT_UVLO": (-31.75, -2.54, 0),
+        "VCAP": (-15.24, 2.54, 0),
+    },
+}
+
+
 CAN = {
     # The transceiver, then the bus, drawn as a bus: CANH along the top and
     # CANL along the bottom, with the common-mode choke, the transient
@@ -256,4 +364,4 @@ BLOCKS = [
          "PG_5V", "33uH 3A", "31.6k", "31.6k", "121k"),
     buck("LM5164 (3V3)", "+3V3", "SW_3V3", "EN_3V3", "RON_3V3", "FB_3V3", "BST_3V3",
          "RAMP_3V3", "PG_3V3", "22uH 3A", "20.5k", "57.6k", "95.3k"),
-] + [channel(n) for n in (1, 2, 3, 4)] + [CAN, SDCARD]
+] + [channel(n) for n in (1, 2, 3, 4)] + [FRONTEND, CAN, SDCARD, USB]
