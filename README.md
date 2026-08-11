@@ -11,13 +11,14 @@ harness convention (12 V / GND / CAN_H / CAN_L), same default-on 120 Ω
 termination jumper — but trades the second CAN channel for an onboard microSD
 socket and conditioned analog inputs.
 
-**Status: complete and ready to order.** Schematic is ERC-clean on KiCad 9.0.
-The PCB is 84 x 74 mm, 4-layer, fully placed and routed — 1432 tracks, 249
-vias, solid GND and +3V3 planes, **all 341 connections routed with zero DRC
-errors and nothing unconnected**. `fab/` holds the Gerbers, drill, BOM and
-pick-and-place files in JLCPCB's format. See §9 for how the board is built
-and §10 for the ordering steps. **Rev A has never been fabricated — the first
-order should be a small prototype run.**
+**Status: Rev B, not yet orderable.** Schematic is ERC-clean on KiCad 9.0.
+The PCB is **84 x 80 mm**, 4-layer, placed and routed with **zero DRC errors**
+— but **three connections are still open** and need finishing in KiCad's
+interactive router before the Gerbers are worth sending. Rev B carries the
+fixes from an external datasheet review (§7): the LM74700 enable divider,
+the ANODE capacitor, two TVS standoff corrections, transient clamps on the
+analog harness inputs, and a dozen smaller items. See §9 for how the board is
+built and §10 for the ordering steps. **Nothing has ever been fabricated.**
 
 ---
 

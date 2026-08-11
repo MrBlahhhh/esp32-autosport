@@ -650,6 +650,11 @@ def one_pass():
     print("   %d open, %d violations" % (len(unconnected), len(violations)))
 
     torn = load_torn()
+    # --no-rip: take only paths that exist in the copper as it stands. Rip-up
+    # can route a net by tearing out four others and failing to restore them,
+    # which the baseline guard then reverts wholesale -- so when only a couple
+    # of connections are left it is worth asking for the honest answer first.
+    no_rip = "--no-rip" in sys.argv
     board = pcbnew.LoadBoard(BOARD_PATH)
     box = board.GetBoardEdgesBoundingBox()
     bounds = (ToMM(box.GetLeft()) + EDGE_KEEP,
@@ -676,8 +681,9 @@ def one_pass():
         if path is None:
             regions = [reachable(grid, seeds_of(grid, side))
                        for side in (home, target)]
-            cands = [c for c in blockers(grid, obs, regions, net, width, pads)
-                     if torn[c] < RIP_LIMIT]
+            cands = [] if no_rip else [
+                c for c in blockers(grid, obs, regions, net, width, pads)
+                if torn[c] < RIP_LIMIT]
             for k in range(1, min(MAX_RIP, len(cands)) + 1):
                 skip = tuple(cands[:k])
                 grid, path, home, target = try_route(board, obs, net, a, b,
@@ -735,11 +741,26 @@ def main():
     print("start: %d violations, %d unconnected"
           % (len(violations), len(unconnected)))
 
+    # Rip-up can dig a hole it cannot climb out of: on one run this started
+    # at 4 open connections and finished at 13, having torn out more than it
+    # put back. Keep the best board seen and restore it at the end, so a pass
+    # is free to experiment but the result is never worse than the input.
+    def score():
+        v, u = drc(BOARD_PATH)
+        return (len([x for x in v if x.get("severity") == "error"]), len(u))
+
+    best = score()
+    best_copy = BOARD_PATH + ".best"
+    shutil.copyfile(BOARD_PATH, best_copy)
+    print("baseline: %d errors, %d unconnected" % best)
+
     prev, stalled = len(unconnected), 0
     for rnd in range(PASSES):
         print("\n-- pass %d" % (rnd + 1))
-        res = subprocess.run([sys.executable, os.path.abspath(__file__),
-                              "--once"], capture_output=True, text=True)
+        argv = [sys.executable, os.path.abspath(__file__), "--once"]
+        if "--no-rip" in sys.argv:
+            argv.append("--no-rip")
+        res = subprocess.run(argv, capture_output=True, text=True)
         for line in (res.stdout or "").splitlines():
             if "memory leak" in line or "image handler" in line:
                 continue
@@ -757,11 +778,21 @@ def main():
         # routes something and the count never comes down at all.
         _, unconnected = drc(BOARD_PATH)
         now = len(unconnected)
+        cur = score()
+        if cur < best:
+            best = cur
+            shutil.copyfile(BOARD_PATH, best_copy)
         stalled = 0 if now < prev else stalled + 1
         prev = now
         if stalled >= 5:
             print("   no headway in %d passes -- stopping" % stalled)
             break
+
+    if score() > best:
+        print("   worse than the baseline -- restoring the best board seen")
+        shutil.copyfile(best_copy, BOARD_PATH)
+    if os.path.exists(best_copy):
+        os.remove(best_copy)
 
     violations, unconnected = drc(BOARD_PATH)
     print("\nfinal: %d violations, %d unconnected"

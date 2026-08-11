@@ -314,7 +314,15 @@
       },
       {
         "netclass": "Power",
-        "pattern": "VBAT_*"
+        "pattern": "VBAT_IN"
+      },
+      {
+        "netclass": "Power",
+        "pattern": "VBAT_F"
+      },
+      {
+        "netclass": "Power",
+        "pattern": "VBAT_FB"
       },
       {
         "netclass": "Power",
@@ -373,20 +381,8 @@
     "page_layout_descr_file": ""
   },
   "schematic": {
-    "annotate_start_num": 0,
     "legacy_lib_dir": "",
-    "legacy_lib_list": [],
-    "meta": {
-      "version": 1
-    },
-    "page_layout_descr_file": "",
-    "spice_current_sheet_as_root": false,
-    "spice_external_command": "spice \"%I\"",
-    "spice_model_current_sheet_as_root": true,
-    "spice_save_all_currents": false,
-    "spice_save_all_voltages": false,
-    "subpart_first_id": 65,
-    "subpart_id_separator": 0
+    "legacy_lib_list": []
   },
   "sheets": [],
   "text_variables": {}
