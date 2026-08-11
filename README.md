@@ -601,11 +601,16 @@ It will read 84 x 74 mm and 4 layers off the files.
 quantity 5, tooling holes *Added by JLCPCB*. Every part is on the top face.
 
 **4 — Upload the parts files.** BOM is `fab/bom.csv`, CPL (they may call it
-"pick and place") is `fab/positions.csv`.
+"pick and place") is `fab/positions.csv`. Both list the same **144
+designators** — they have to, because JLC pairs them up by designator and
+anything present in one and missing from the other simply does not get
+assembled.
 
-**5 — Match the parts.** Lines with an LCSC number match themselves. The rest
-— polyfuses, the P-channel FET, the bulk electrolytic, the 0.1 % dividers,
-LEDs and generic passives — you pick from their catalogue on this screen.
+**5 — Match the parts.** This is the long step. **15** lines arrive with an
+LCSC number and match themselves; the other **129** have an empty LCSC cell
+and you choose a part for each on this screen — mostly generic passives, plus
+the polyfuses, the P-channel FET, the bulk electrolytic and the 0.1 %
+dividers.
 Take *Basic* parts over *Extended* where the value and package match; Extended
 parts add a setup fee each. Two things to hold to: the 0.1 % divider resistors
 (`R43`–`R62`) must stay **0.1 %**, that tolerance is the whole point of the

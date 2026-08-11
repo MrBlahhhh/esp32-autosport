@@ -102,17 +102,33 @@ def positions():
 
 
 def bom():
-    """Assembly BOM from the generator's own table, JLC column order."""
+    """Assembly BOM from the generator's own table, JLC column order.
+
+    Every part that gets placed goes in the file, whether or not it
+    already has an LCSC number -- the ones without simply have an empty
+    LCSC cell, which is what JLC's parts-matching screen expects you to
+    fill in.
+
+    Leaving them out instead is the obvious-looking shortcut and it is
+    wrong: JLC matches BOM to placement by designator, so a designator
+    that appears in positions.csv but in no BOM line is not "to be
+    chosen later", it is *not assembled*. That silently drops most of
+    the board.
+
+    Excluded here are the things that are not parts at all -- mounting
+    holes, test points and solder jumpers -- which is the same set
+    kicad-cli leaves out of the position file, so the two agree.
+    """
     import generate_schematic as sch
     sch.assign_refs()
-    groups, skipped = {}, {}
+    groups, unpicked = {}, {}
     for sh in sch.SHEETS:
         for p in sh["parts"]:
             if p["prefix"].startswith("#"):
                 continue
             if p["lib_id"] in ("Connector:TestPoint",):
                 continue
-            if p["footprint"].startswith("MountingHole"):
+            if p["footprint"].startswith(("MountingHole", "Jumper:")):
                 continue
             key = (p["value"], p["footprint"], p["lcsc"])
             groups.setdefault(key, []).append(p["ref"])
@@ -123,13 +139,12 @@ def bom():
         w.writerow(["Comment", "Designator", "Footprint", "LCSC"])
         for (value, fp, lcsc), refs in sorted(groups.items(),
                                               key=lambda kv: kv[1][0]):
-            if not lcsc:
-                skipped[value] = sorted(refs)
-                continue
             w.writerow([value, ",".join(sorted(refs)),
                         fp.split(":", 1)[-1], lcsc])
             placed += len(refs)
-    return out, placed, skipped
+            if not lcsc:
+                unpicked[value] = sorted(refs)
+    return out, placed, unpicked
 
 
 def main():
@@ -144,11 +159,20 @@ def main():
     pos_path, n_pos = positions()
     print("positions   : %s (%d parts)" % (pos_path, n_pos))
 
-    bom_path, n_bom, skipped = bom()
-    print("bom         : %s (%d parts with LCSC numbers)" % (bom_path, n_bom))
-    if skipped:
-        print("\nPick these in the JLC catalogue at order time:")
-        for value, refs in sorted(skipped.items()):
+    bom_path, n_bom, unpicked = bom()
+    n_unpicked = sum(len(r) for r in unpicked.values())
+    print("bom         : %s (%d parts, %d already have an LCSC number)"
+          % (bom_path, n_bom, n_bom - n_unpicked))
+
+    if n_bom != n_pos:
+        print("WARNING: %d parts in the BOM but %d in the position file -- "
+              "JLC matches the two by designator, so any designator that is "
+              "in one and not the other will not be assembled" % (n_bom, n_pos))
+
+    if unpicked:
+        print("\nThese %d are in the BOM with an empty LCSC cell; pick them on "
+              "JLC's parts-matching screen:" % n_unpicked)
+        for value, refs in sorted(unpicked.items()):
             print("  %-22s %s" % (value, " ".join(refs)))
 
 
