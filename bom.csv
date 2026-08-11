@@ -5,7 +5,7 @@ Qty (1 board),Qty (10 boards),References,Value,Voltage,Tolerance,Footprint,Manuf
 2,20,C2 C5,100nF,100V,,Capacitor_SMD:C_0805_2012Metric,,,LM74700 ANODE input capacitor: the datasheet requires a minimum 22nF at ANODE and this node is behind FB1 with nothing else on it
 4,40,C20 C22 C25 C28,10uF,16V,,Capacitor_SMD:C_1206_3216Metric,,,
 1,10,C21,1uF,16V,,Capacitor_SMD:C_0805_2012Metric,,,EN reset delay
-1,10,C3,100uF,100V,,Capacitor_SMD:CP_Elec_10x10.5,Nichicon UCD2A101MNL1GS,,Bulk hold-up; any 100uF >=80V SMD electrolytic on a 10x10.5 land works -- match in the JLC catalog at order
+1,10,C3,100uF,100V,,Capacitor_SMD:CP_Elec_10x10.5,Nichicon UCD2A101MNL1GS,,Bulk hold-up; any 100uF >=80V SMD electrolytic on a 10x10.5 land works -- match in the JLC catalog at order. Pin 1 is +
 1,10,C32,4.7nF,50V,,Capacitor_SMD:C_0805_2012Metric,,,Split-termination common-mode stabiliser
 1,10,C4,10uF,100V,,Capacitor_SMD:C_1206_3216Metric,,,Switcher input bypass
 2,20,C13 C6,10nF,100V,,Capacitor_SMD:C_0805_2012Metric,,,EN sits on a bare 100k to VBAT; this keeps a high-impedance enable node quiet in a vehicle

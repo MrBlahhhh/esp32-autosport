@@ -467,8 +467,13 @@ def R(sh, value, a, b, mpn="", note="", fp=R0805):
     part(sh, "R", "Device:R", value, fp, {"1": a, "2": b}, mpn, note)
 
 
-def C(sh, value, a, b, fp=C0805, mpn="", note=""):
-    part(sh, "C", "Device:C", value, fp, {"1": a, "2": b}, mpn, note)
+def C(sh, value, a, b, fp=C0805, mpn="", note="", polarized=False):
+    """`a` is pin 1. For a polarized part that is the + terminal, and the
+    symbol must say so: a plain Device:C on an electrolytic land is right
+    by luck rather than by construction, and neither ERC nor a reader can
+    tell it from a reversed one."""
+    lib = "Device:C_Polarized" if polarized else "Device:C"
+    part(sh, "C", lib, value, fp, {"1": a, "2": b}, mpn, note)
 
 
 def flag(sh, net):
@@ -519,8 +524,9 @@ part(pw, "D", "Device:D_Zener", "SMCJ40A", SMC, {"1": "+VBAT", "2": "GND"},
      "40V standoff / 64.5V clamp @ 1500W: absorbs ISO 7637-2 pulse 5b load "
      "dump. 40V not 33V so the part stands off the declared 36V input top")
 C(pw, "100uF 100V", "+VBAT", "GND", fp="Capacitor_SMD:CP_Elec_10x10.5",
-  mpn="Nichicon UCD2A101MNL1GS", note="Bulk hold-up; any 100uF >=80V SMD "
-  "electrolytic on a 10x10.5 land works -- match in the JLC catalog at order")
+  mpn="Nichicon UCD2A101MNL1GS", polarized=True,
+  note="Bulk hold-up; any 100uF >=80V SMD electrolytic on a 10x10.5 land "
+       "works -- match in the JLC catalog at order. Pin 1 is +")
 C(pw, "10uF 100V", "+VBAT", "GND", fp=C1206, note="Switcher input bypass")
 C(pw, "100nF 100V", "+VBAT", "GND", note="HF bypass")
 

@@ -1401,6 +1401,167 @@
 		)
 		(embedded_fonts no)
 	)
+	(symbol "Device:C_Polarized"
+		(pin_numbers
+			(hide yes)
+		)
+		(pin_names
+			(offset 0.254)
+		)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(property "Reference" "C"
+			(at 0.635 2.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "C_Polarized"
+			(at 0.635 -2.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 0.9652 -3.81 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 0 0 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Polarized capacitor"
+			(at 0 0 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "ki_keywords" "cap capacitor"
+			(at 0 0 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "ki_fp_filters" "CP_*"
+			(at 0 0 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(symbol "C_Polarized_0_1"
+			(rectangle
+				(start -2.286 0.508)
+				(end 2.286 1.016)
+				(stroke
+					(width 0)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(polyline
+				(pts
+					(xy -1.778 2.286) (xy -0.762 2.286)
+				)
+				(stroke
+					(width 0)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(polyline
+				(pts
+					(xy -1.27 2.794) (xy -1.27 1.778)
+				)
+				(stroke
+					(width 0)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(rectangle
+				(start 2.286 -0.508)
+				(end -2.286 -1.016)
+				(stroke
+					(width 0)
+					(type default)
+				)
+				(fill
+					(type outline)
+				)
+			)
+		)
+		(symbol "C_Polarized_1_1"
+			(pin passive line
+				(at 0 3.81 270)
+				(length 2.794)
+				(name "~"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "1"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+			(pin passive line
+				(at 0 -3.81 90)
+				(length 2.794)
+				(name "~"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "2"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+		)
+		(embedded_fonts no)
+	)
 	(symbol "Regulator_Switching:LM5164DDA"
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -4321,7 +4482,7 @@
       )
     )
   )
-  (symbol (lib_id "Device:C") (at 44.45 226.06 90) (unit 1)
+  (symbol (lib_id "Device:C_Polarized") (at 44.45 226.06 90) (unit 1)
     (in_bom yes) (on_board yes) (dnp no)
     (uuid 050f55c0-69e0-541d-a791-61c66df5776d)
     (property "Reference" "C3" (at 44.45 224.06 270)
@@ -4342,7 +4503,7 @@
     (property "MPN" "Nichicon UCD2A101MNL1GS" (at 44.45 228.06 270)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "Note" "Bulk hold-up; any 100uF >=80V SMD electrolytic on a 10x10.5 land works -- match in the JLC catalog at order" (at 44.45 228.06 270)
+    (property "Note" "Bulk hold-up; any 100uF >=80V SMD electrolytic on a 10x10.5 land works -- match in the JLC catalog at order. Pin 1 is +" (at 44.45 228.06 270)
       (effects (font (size 1.27 1.27)) hide)
     )
     (pin "1" (uuid 4037667d-46f1-5b34-b6e7-5134b7dbd4d5))
