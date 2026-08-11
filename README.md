@@ -611,16 +611,22 @@ and pin the stackup you were going to get regardless.
 quantity 5, tooling holes *Added by JLCPCB*. Every part is on the top face.
 
 **4 — Upload the parts files.** BOM is `fab/bom.csv`, CPL (they may call it
-"pick and place") is `fab/positions.csv`. Both list the same **144
+"pick and place") is `fab/positions.csv`. Both list the same **136
 designators** — they have to, because JLC pairs them up by designator and
 anything present in one and missing from the other simply does not get
-assembled.
+assembled. The eight through-hole connectors are deliberately in neither
+file; you solder those yourself, so there is nothing to mark "do not place".
 
-**5 — Match the parts.** This is the long step. **15** lines arrive with an
-LCSC number and match themselves; the other **129** have an empty LCSC cell
-and you choose a part for each on this screen — mostly generic passives, plus
-the polyfuses, the P-channel FET, the bulk electrolytic and the 0.1 %
-dividers.
+**The BOM's part-number column must be headed `JLCPCB Part #`.** That is the
+only name JLC reads. Head it `LCSC` and the column is silently ignored, every
+line falls through to the fuzzy text matcher, and you get offered a mechanical
+limit switch for a Schottky diode named "40V 1A" and a real WS2812 LED for a
+header named WS2812. Both happened.
+
+**5 — Match the parts.** **12** lines arrive with a part number and match
+themselves. Another **18** carry a specific manufacturer part number and
+should match on that. The remaining **33** are generic passives where any
+equivalent will do.
 Take *Basic* parts over *Extended* where the value and package match; Extended
 parts add a setup fee each. Two things to hold to: the 0.1 % divider resistors
 (`R43`–`R62`) must stay **0.1 %**, that tolerance is the whole point of the

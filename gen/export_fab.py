@@ -78,6 +78,26 @@ def gerbers():
     return zip_path, len(glob.glob(os.path.join(out, "*")))
 
 
+def through_hole_refs():
+    """References JLC should not be asked to assemble.
+
+    The JST harness connectors and the 0.1" headers are through-hole, and
+    through-hole assembly is a separate and pricier service, so they are
+    hand-soldered. Leaving them in the BOM and the position file means
+    eight lines to mark "do not place" by hand in JLC's UI, and an
+    auto-matcher that cheerfully offers real parts for them -- it matched
+    an actual WS2812 LED to the header named WS2812. Cleaner to drop them
+    from both files, consistently, so the two still agree.
+    """
+    try:
+        import pcbnew
+    except ImportError:
+        return set()
+    board = pcbnew.LoadBoard(BOARD)
+    return {fp.GetReference() for fp in board.GetFootprints()
+            if fp.GetAttributes() & pcbnew.FP_THROUGH_HOLE}
+
+
 def positions():
     """kicad-cli position file -> JLC's column names and rotation sign."""
     raw = os.path.join(FAB, "pos-raw.csv")
@@ -90,8 +110,11 @@ def positions():
         r = csv.DictReader(fh)
         w = csv.writer(wfh)
         w.writerow(["Designator", "Mid X", "Mid Y", "Layer", "Rotation"])
+        skip = through_hole_refs()
         for row in r:
             ref = row.get("Ref") or row.get("Designator")
+            if ref in skip:
+                continue
             side = (row.get("Side") or "").lower()
             w.writerow([ref, row.get("PosX"), row.get("PosY"),
                         "Top" if side.startswith("t") else "Bottom",
@@ -121,22 +144,30 @@ def bom():
     """
     import generate_schematic as sch
     sch.assign_refs()
+    hand = through_hole_refs()
     groups, unpicked = {}, {}
     for sh in sch.SHEETS:
         for p in sh["parts"]:
             if p["prefix"].startswith("#"):
                 continue
+            if p["ref"] in hand:
+                continue
             if p["lib_id"] in ("Connector:TestPoint",):
                 continue
             if p["footprint"].startswith(("MountingHole", "Jumper:")):
                 continue
-            key = (p["value"], p["footprint"], p["lcsc"])
+            # JLC fuzzy-matches on Comment, so give it the manufacturer
+            # part number when there is one. Matching on a bare value is
+            # how "40V 1A" became a mechanical limit switch and "WS2812"
+            # became an actual WS2812 LED.
+            comment = p["mpn"] or p["value"]
+            key = (comment, p["footprint"], p["lcsc"])
             groups.setdefault(key, []).append(p["ref"])
     out = os.path.join(FAB, "bom.csv")
     placed = 0
     with open(out, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
-        w.writerow(["Comment", "Designator", "Footprint", "LCSC"])
+        w.writerow(["Comment", "Designator", "Footprint", "JLCPCB Part #"])
         for (value, fp, lcsc), refs in sorted(groups.items(),
                                               key=lambda kv: kv[1][0]):
             w.writerow([value, ",".join(sorted(refs)),
