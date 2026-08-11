@@ -126,12 +126,15 @@ FIXED = {
     "ESP32-S3-WROOM-1-N16R8":   (52.0, 6.8, 0),     # antenna overhangs top edge
     # The fab outline runs y -3.65..+3.65 and the signal pads sit at y -4.04,
     # outside it: the contacts leave the REAR of the shell, so at 0 degrees
-    # the mouth faces +y.  At 270 that pointed the opening back into the
-    # middle of the board.  At 90 the mouth ends ~2 mm inside the right edge
-    # -- the plug approaches over the top of the board, so the last 2 mm of
-    # laminate is not in its way -- and the pad row faces inboard, which is
-    # where the D+/D- via columns and the USBLC6 want to be anyway.
-    "HRO TYPE-C-31-M-12":       (78.35, 8.0, 90),   # right edge, opening out
+    # the mouth faces +y, and the pad row faces the other way.  At 90 the
+    # mouth points out of the right edge and the pads face inboard, which is
+    # where the D+/D- via columns and the USBLC6 already are.
+    #
+    # The shell face sits 0.5 mm inside the outline.  It was 2 mm, which is
+    # enough laminate in front of the mouth to stop a plug's overmould
+    # seating; 0.5 mm is as close as the body can go and still be inside the
+    # board for assembly.
+    "HRO TYPE-C-31-M-12":       (79.85, 16.0, 90),  # right edge, opening out
     "Hirose DM3D-SF":           (75.0, 41.0, 270),  # right edge, card out
     "value:Spare IO":           (10.0, 3.0, 90),    # top edge, clear of H1
     "value:SPI":                (27.5, 3.0, 90),    # top edge
@@ -191,30 +194,39 @@ BUCK_FIXED = [
 ]
 
 
-HOLES = [(4.0, 4.0), (4.0, 70.0), (66.0, 4.0), (80.0, 26.0)]
+# Mounting holes, one per corner region.  H3 and H4 used to sit inboard --
+# H3 beside the module and H4 halfway down the right edge -- which put a
+# fixing right where the USB port and the MCU passives wanted to be.  On the
+# corners they are out of the way of both and easier to bolt down.
+HOLES = [(4.0, 4.0), (4.0, 70.0), (80.0, 4.0), (80.0, 72.0)]
+
+# How much of a zone's spare height may go between its rows.  Silkscreen
+# reference text is 0.8 mm, so a millimetre on top of the 0.4 mm packing gap
+# is the difference between text that fits and text that collides.
+ROW_SLACK = 1.0
 
 # Auto-packed zones: (x, y, w, h) shelves filled left-to-right, top-to-bottom.
 # Order matters: the first predicate that matches a part claims it.
 ZONES = [
     # (name, rect, predicate)
     ("adc",       (43.0, 29.0,  7.5,  7.0), lambda p, n, s: p["mpn"] == "ADS1115IDGSR" or (s == "Analog Inputs" and n <= {"+3V3", "GND"})),
-    ("ch1",       ( 9.5,  7.0,  8.0, 28.0), lambda p, n, s: n & {"AIN1_A", "AIN1_PU", "AIN1_R1", "AIN1_R2", "AIN1_IN", "AIN1"}),
-    ("ch2",       (18.0,  7.0,  8.0, 28.0), lambda p, n, s: n & {"AIN2_A", "AIN2_PU", "AIN2_R1", "AIN2_R2", "AIN2_IN", "AIN2"}),
-    ("ch3",       (26.5,  7.0,  8.0, 28.0), lambda p, n, s: n & {"AIN3_A", "AIN3_PU", "AIN3_R1", "AIN3_R2", "AIN3_IN", "AIN3"}),
-    ("ch4",       (34.6,  7.0,  7.6, 28.0), lambda p, n, s: n & {"AIN4_A", "AIN4_PU", "AIN4_R1", "AIN4_R2", "AIN4_IN", "AIN4"}),
+    ("ch1",       ( 9.5,  7.0,  8.0, 26.0), lambda p, n, s: n & {"AIN1_A", "AIN1_PU", "AIN1_R1", "AIN1_R2", "AIN1_IN", "AIN1"}),
+    ("ch2",       (18.0,  7.0,  8.0, 26.0), lambda p, n, s: n & {"AIN2_A", "AIN2_PU", "AIN2_R1", "AIN2_R2", "AIN2_IN", "AIN2"}),
+    ("ch3",       (26.5,  7.0,  8.0, 26.0), lambda p, n, s: n & {"AIN3_A", "AIN3_PU", "AIN3_R1", "AIN3_R2", "AIN3_IN", "AIN3"}),
+    ("ch4",       (34.6,  7.0,  7.6, 26.0), lambda p, n, s: n & {"AIN4_A", "AIN4_PU", "AIN4_R1", "AIN4_R2", "AIN4_IN", "AIN4"}),
     ("ws2812",    (57.5, 69.8, 16.0,  9.6), lambda p, n, s: n & {"LED_DIN_MCU", "LED_DIN_A", "LED_DIN", "LED_5V"}),
-    ("usb",       (62.0, 14.2, 13.0, 10.8), lambda p, n, s: n & {"USB_DP_CON", "USB_DM_CON", "USB_CC1", "USB_CC2", "VBUS_IN", "VBUS", "USB_DP", "USB_DM"}),
+    ("usb",       (62.0,  8.0, 13.0, 14.0), lambda p, n, s: n & {"USB_DP_CON", "USB_DM_CON", "USB_CC1", "USB_CC2", "VBUS_IN", "VBUS", "USB_DP", "USB_DM"}),
     ("sdpwr",     (59.0, 49.3, 11.0,  8.5), lambda p, n, s: n & {"SD_PG", "SD_EN_G", "SD_PWR_EN"}),
     ("sd",        (49.8, 21.4, 13.2, 15.0), lambda p, n, s: s == "SD Card"),
-    ("can",       ( 9.5, 28.2, 21.0, 15.0), lambda p, n, s: s == "CAN"),
-    ("sens5v",    ( 9.5, 69.8, 20.0,  9.6), lambda p, n, s: n & {"VSENS_F", "+5VS"} and s == "Power"),
-    ("frontend",  ( 9.2, 43.3, 24.4, 25.0), lambda p, n, s: s == "Power" and n & {"VBAT_IN", "VBAT_F", "VBAT_FB", "GATE_RB", "VCAP", "VBAT_UVLO", "+VBAT"}),
+    ("can",       ( 9.5, 34.0, 21.0, 15.2), lambda p, n, s: s == "CAN"),
+    ("sens5v",    ( 9.5, 75.2, 24.0,  6.0), lambda p, n, s: n & {"VSENS_F", "+5VS"} and s == "Power"),
+    ("frontend",  ( 9.2, 49.7, 24.4, 25.0), lambda p, n, s: s == "Power" and n & {"VBAT_IN", "VBAT_F", "VBAT_FB", "GATE_RB", "VCAP", "VBAT_UVLO", "+VBAT"}),
     # IO3/IO45/IO46 run from the module's south pad row to J7 at the top
     # left. Pull-downs parked in the bottom band left R29 needing a run
     # the length of the board; put them on the path instead.
     ("strap",     (42.6, 20.8,  6.6,  7.6), lambda p, n, s: n & {"IO3", "IO45", "IO46"}),
-    ("mcu_misc",  (63.0, 25.6, 13.0, 10.0), lambda p, n, s: s == "MCU"),
-    ("pwr_misc",  (31.0, 69.8, 15.5,  9.6), lambda p, n, s: True),
+    ("mcu_misc",  (63.0, 23.0, 19.0, 10.4), lambda p, n, s: s == "MCU"),
+    ("pwr_misc",  (34.0, 69.8, 15.5,  9.6), lambda p, n, s: True),
 ]
 
 
@@ -236,6 +248,15 @@ MODEL_SUBS = {
     "USB_C_Receptacle_HRO_TYPE-C-31-M-12":
         ("Connector_USB.3dshapes/"
          "USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal.step"),
+    # The buck names an exposed pad KiCad has no model for; the 2.41x3.81
+    # variant is the same SOIC-8 body.
+    "SOIC-8-1EP_3.9x4.9mm_P1.27mm_EP2.95x4.9mm_Mask2.71x3.4mm_ThermalVias":
+        ("Package_SO.3dshapes/"
+         "SOIC-8-1EP_3.9x4.9mm_P1.27mm_EP2.41x3.81mm.step"),
+    # The CAN choke is a project footprint with no model at all. Its body is
+    # 4.5 x 3.2 mm, which is an 1812.
+    "L_CommonMode_TDK_ACT45B":
+        "Inductor_SMD.3dshapes/L_1812_4532Metric.step",
 }
 
 
@@ -430,23 +451,38 @@ def main():
             bb = courtyard_box(fp)
             sized.append((pcbnew.ToMM(bb.GetHeight()), pcbnew.ToMM(bb.GetWidth()), fp))
         sized.sort(key=lambda t: (-t[0], -t[1]))
-        x, y, row_h = zx, zy, 0.0
-        overflow = False
+        # Break into shelves first, place second.  A zone that does not need
+        # its full height shares what is left between its rows: the analogue
+        # channels were packing 20.7 mm of parts into a 28 mm shelf and then
+        # sitting them 0.4 mm apart, which leaves the silkscreen nowhere to
+        # go and is why the reference designators ran into each other.
+        rows, row, x, row_h = [], [], zx, 0.0
         for h, w, fp in sized:
             if x + w > zx + zw and x > zx:
-                x, y = zx, y + row_h + gap
-                row_h = 0.0
-            bb = courtyard_box(fp)
-            # position so the courtyard's top-left lands at (x, y)
-            fp.SetPosition(pt(x + w / 2.0, y + h / 2.0))
-            bb = courtyard_box(fp)
-            fp.Move(pt(x, y) - pcbnew.VECTOR2I(bb.GetLeft(), bb.GetTop()))
+                rows.append((row, row_h))
+                row, x, row_h = [], zx, 0.0
+            row.append((h, w, fp))
             x += w + gap
             row_h = max(row_h, h)
-            if y + row_h > zy + zh:
-                overflow = True
-        used_h = (y + row_h) - zy
-        report.append((name, len(parts), used_h, zh, overflow))
+        if row:
+            rows.append((row, row_h))
+        packed = sum(rh for _r, rh in rows) + gap * max(len(rows) - 1, 0)
+        slack = 0.0
+        if len(rows) > 1:
+            slack = min(max(zh - packed, 0.0) / (len(rows) - 1), ROW_SLACK)
+        y, bottom = zy, zy
+        for members, rh in rows:
+            x = zx
+            for h, w, fp in members:
+                # position so the courtyard's top-left lands at (x, y)
+                fp.SetPosition(pt(x + w / 2.0, y + h / 2.0))
+                bb = courtyard_box(fp)
+                fp.Move(pt(x, y) - pcbnew.VECTOR2I(bb.GetLeft(), bb.GetTop()))
+                x += w + gap
+            bottom = y + rh
+            y += rh + gap + slack
+        used_h = bottom - zy
+        report.append((name, len(parts), used_h, zh, used_h > zh))
 
     # --- perimeter keepout -------------------------------------------------
     # Copper-to-edge clearance is 0.5 mm; an autorouter reading the Specctra
