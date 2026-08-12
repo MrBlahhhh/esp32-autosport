@@ -5,3 +5,5 @@ gen/__pycache__/
 logs/
 fab/gerbers/
 fab/*.zip
+sim/*.cir
+sim/*.dat
