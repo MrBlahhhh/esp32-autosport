@@ -277,7 +277,7 @@ range reads 3.27 V.
 ## 4. CAN
 
 `U7` is a TJA1051T/3 — 5 V bus drive with a separate `VIO` pin tied to +3V3, so
-the ESP32 sees 3.3 V logic with no level shifter. `S` is pulled low by `R40`
+the ESP32 sees 3.3 V logic with no level shifter. `S` is pulled low by `R54`
 (10 k) so the transceiver comes up in normal mode with the MCU still in reset;
 `GPIO21` can raise it for silent (listen-only) sniffing. `CAN_TX` has no
 external pull — the TJA1051 pulls TXD high internally, so a floating pin at
@@ -351,8 +351,13 @@ MCU will back-feed the card through its I/O pins while its supply is off.
 | 9 | IO16 | `SENS_EN` | Sensor-rail (+5VS) enable, active high, off at reset; also J7 pin 5 |
 | 28, 29, 30 | IO35, IO36, IO37 | — | **Unusable** — octal PSRAM |
 
-`IO3`, `IO45` and `IO46` are strapping pins and are broken out with no pull
-resistors; do not hang anything on them that drives a level at boot.
+`IO3`, `IO45` and `IO46` are strapping pins, and each carries a 10 kΩ
+pull-down (`R36`–`R38`) chosen for its strapping role: `IO45` low sets
+VDD_SPI to 3.3 V, `IO46` low selects normal boot, `IO3` low fixes the JTAG
+source. The board therefore boots correctly with `J7` empty. What the
+pull-downs cannot survive is something plugged into `J7` that actively
+*drives* one of them high at boot — 10 kΩ loses to a driver — so do not hang
+anything on `J7` that asserts a level before the MCU is out of reset.
 
 ### WS2812 shift-light header
 

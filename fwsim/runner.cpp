@@ -24,6 +24,17 @@ int main(int argc, char** argv) {
     else if (a == "--trace") { trace = next; i++; }
     else if (a == "--serial") { serial = next; i++; }
     else if (a == "--faults") { faults = next; i++; }
+    else if (a == "--dump-board") {
+      // Print the board model so it can be diffed against netlist.txt. The
+      // model is the premise of every other result here; if it drifts from the
+      // design, the studies confidently validate the wrong board.
+      const sim::Board* b = sim::board_by_name(next);
+      if (!b) { fprintf(stderr, "fwsim: unknown board '%s'\n", next); return 2; }
+      printf("gpio,net,role\n");
+      for (size_t k = 0; k < b->pins.size(); k++)
+        printf("%d,%s,%s\n", b->pins[k].gpio, b->pins[k].net, sim::role_name(b->pins[k].role));
+      return 0;
+    }
     else { fprintf(stderr, "fwsim: unknown argument %s\n", argv[i]); return 2; }
   }
   if (scenario.empty()) { fprintf(stderr, "fwsim: --scenario is required\n"); return 2; }

@@ -365,6 +365,76 @@ def _wrap(text, indent, width=96):
 
 
 # ------------------------------------------------------------------ studies --
+# ESP32-S3-WROOM-1 module pin -> GPIO. The netlist records module pin numbers
+# because that is what the footprint has; every study here talks in GPIO
+# numbers because that is what firmware has. This table is the joint, and it is
+# the one place the two vocabularies meet.
+MODULE_PIN_TO_GPIO = {
+    39: 1, 38: 2, 4: 4, 5: 5, 6: 6, 7: 7, 12: 8,
+    17: 9, 18: 10, 19: 11, 20: 12, 21: 13, 22: 14,
+    8: 15, 9: 16, 10: 17, 11: 18, 13: 19, 14: 20, 23: 21,
+    31: 38, 32: 39, 36: 44, 37: 43,
+    33: 40, 34: 41, 35: 42, 24: 47, 25: 48,
+    27: 0, 15: 3, 16: 46, 26: 45, 28: 35, 29: 36, 30: 37,
+}
+MODULE_REF = "U5"
+
+
+def study_pinmap(exes):
+    head("0. Does the board model agree with the netlist?")
+    print("  Every other result depends on this. A model built from prose")
+    print("  instead of the design would validate the wrong board, confidently.")
+    import re
+    import subprocess as sp
+
+    exe = next(iter(exes.values()))
+    out = sp.run([exe, "--dump-board", "autosport"], capture_output=True, text=True).stdout
+    model, skipped = {}, []
+    for line in out.splitlines()[1:]:
+        gpio, net, role = line.split(",", 2)
+        # The PSRAM pins are bonded inside the module and appear on no net.
+        # They are in the model so that touching one is a fault, not so that
+        # they can be traced.
+        if "PSRAM" in role:
+            skipped.append(int(gpio))
+        else:
+            model[int(gpio)] = net
+
+    netlist = {}
+    path = os.path.join(PROJ, "netlist.txt")
+    for line in open(path, encoding="utf-8"):
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        for ref in parts[1:]:
+            m = re.fullmatch(re.escape(MODULE_REF) + r"\.(\d+)", ref)
+            if m:
+                gpio = MODULE_PIN_TO_GPIO.get(int(m.group(1)))
+                if gpio is not None:
+                    netlist.setdefault(gpio, []).append(parts[0])
+
+    bad = []
+    for gpio in sorted(model):
+        nets = netlist.get(gpio, [])
+        if model[gpio] not in nets:
+            bad.append("GPIO%d: model says %s, %s.%s carries %s"
+                       % (gpio, model[gpio], MODULE_REF,
+                          [k for k, v in MODULE_PIN_TO_GPIO.items() if v == gpio],
+                          nets or "nothing"))
+    for b in bad:
+        print("    MISMATCH  %s" % b)
+    check(not bad, "every modelled pin matches netlist.txt",
+          "%d of %d pins verified against the design, not the README "
+          "(%d PSRAM pins bonded inside the module, no net to check)"
+          % (len(model) - len(bad), len(model), len(skipped)))
+
+    # Pins the netlist connects to the module but the model says nothing about.
+    unmodelled = sorted(set(netlist) - set(model) - set(skipped) - {0})
+    check(not unmodelled, "no connected module pin is missing from the model",
+          "unmodelled: %s" % unmodelled if unmodelled else "")
+    return bad
+
+
 def study_control(exes):
     head("1. Control: the shipping R53 firmware on the board it was written for")
     print("  If the harness cannot agree that working firmware works, nothing")
@@ -680,6 +750,9 @@ def main():
     want = args.only
     def run_it(n, name):
         return want is None or want in (str(n), name)
+
+    if exes and run_it(0, "pinmap"):
+        study_pinmap(exes)
 
     if "r53" in exes:
         if run_it(1, "control"):

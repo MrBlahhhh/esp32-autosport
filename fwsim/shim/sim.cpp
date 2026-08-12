@@ -76,9 +76,11 @@ static Board make_autosport() {
       {20, ROLE_USB,         "USB_DP",     0.0, RAIL_NONE},
       {21, ROLE_CAN_S,       "CAN_S",      0.0, RAIL_NONE},
       {0,  ROLE_BOOT,        "MCU_BOOT",   0.0, RAIL_NONE},
-      {3,  ROLE_SPARE_STRAP, "J7.1",       0.0, RAIL_NONE},
-      {45, ROLE_SPARE_STRAP, "J7.3",       0.0, RAIL_NONE},
-      {46, ROLE_SPARE_STRAP, "J7.2",       0.0, RAIL_NONE},
+      // Net names, not header positions -- gen/simulate_firmware.py study 0
+      // diffs this table against netlist.txt and needs the same vocabulary.
+      {3,  ROLE_SPARE_STRAP, "IO3",        0.0, RAIL_NONE},
+      {45, ROLE_SPARE_STRAP, "IO45",       0.0, RAIL_NONE},
+      {46, ROLE_SPARE_STRAP, "IO46",       0.0, RAIL_NONE},
       {35, ROLE_PSRAM,       "PSRAM",      0.0, RAIL_NONE},
       {36, ROLE_PSRAM,       "PSRAM",      0.0, RAIL_NONE},
       {37, ROLE_PSRAM,       "PSRAM",      0.0, RAIL_NONE},
@@ -630,7 +632,7 @@ void can_install(int tx, int rx, int mode, int rx_queue_len) {
   int cs = gpio_with_role(ROLE_CAN_S);
   if (cs >= 0 && !pin_driven(cs))
     fault(SEV_NOTE, "CAN_S_DEFAULT",
-          "CAN_S (GPIO%d) left undriven; R40 pulls it low so the transceiver comes up in normal "
+          "CAN_S (GPIO%d) left undriven; R54 pulls it low so the transceiver comes up in normal "
           "mode. Drive it high for listen-only if this node must never ACK",
           cs);
 }
