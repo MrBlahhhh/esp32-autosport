@@ -62,6 +62,40 @@ ELSEWHERE = [
 ]
 
 
+# LCSC enforces a minimum order quantity and an order *multiple* per part, and
+# asking for 95 of something sold in hundreds is a rejected line rather than a
+# rounded one. Sampled from the live catalogue on 2026-08-13:
+#
+#   0805 resistor  C17414   min 100, multiple 100
+#   0805 capacitor C49678   min  20, multiple  20
+#   1206 capacitor C13585   min  20, multiple  20
+#   SOT-23 BAT54S  C408389  min  50, multiple  50
+#   SO-8 LM5164    C477928  min   1, multiple   1
+#   ESP32 module   C2913202 min   1, multiple   1
+#
+# The pattern is commodity-versus-branded, not package: cheap jellybean parts
+# are sold in reels of 20-100, anything with a manufacturer's name on it goes
+# in ones. Rounding passives to 100 satisfies every 20/50/100 multiple at once
+# and costs about thirty cents a line, which is cheaper than a second order.
+MOQ_EXACT = {}                      # per-part overrides, if one ever surprises us
+MOQ_PASSIVE = 100                   # 0402 .. 1210
+MOQ_DISCRETE = 50                   # SOT-23 / SOD-123 jellybean semiconductors
+_DISCRETE_FP = re.compile(r"SOT-\d|SOD-\d|SOT23|TO-236")
+
+
+def moq_round(pn, qty, footprint):
+    """Bump a quantity up to something LCSC will actually accept."""
+    step = MOQ_EXACT.get(pn)
+    if step is None:
+        if re.search(r"_(0402|0603|0805|1206|1210)_", footprint):
+            step = MOQ_PASSIVE
+        elif _DISCRETE_FP.search(footprint):
+            step = MOQ_DISCRETE
+        else:
+            step = 1               # branded ICs, connectors, inductors
+    return ((qty + step - 1) // step) * step
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--boards", type=int, default=5)
@@ -103,8 +137,31 @@ def main():
         w = csv.writer(fh)
         w.writerow(["LCSC Part Number", "Order Qty", "Needed", "Spares",
                     "Comment", "Footprint", "Designators"])
-        for r in lines:
-            w.writerow(r)
+        for pn, order, need, spare, cmt, fp, refs in lines:
+            w.writerow([pn, moq_round(pn, order, fp), need, spare,
+                        cmt, fp, refs])
+
+    # LCSC's BOM tool has a column-mapping step, and given a wide file it can
+    # decide the wrong column is the part number -- feeding "100nF 16V" into a
+    # part-number search returns nothing useful and the whole upload comes back
+    # as unavailable. So also emit the narrowest possible file: two columns,
+    # the exact header names LCSC expects, nothing to misread.
+    #
+    # Quantities here are rounded up to a multiple of 100 for 0805/1206
+    # passives, because LCSC enforces a minimum order quantity and an order
+    # multiple per part (100 for most 0805 resistors, 20-50 for capacitors).
+    # A hundred 0805 resistors costs about thirty cents; being under the MOQ
+    # costs a round trip.
+    simple = os.path.join(FAB, "order-lcsc-simple.csv")
+    paste = os.path.join(FAB, "order-lcsc-paste.txt")
+    with open(simple, "w", newline="", encoding="utf-8") as fh, \
+            open(paste, "w", encoding="utf-8") as pf:
+        w = csv.writer(fh)
+        w.writerow(["LCSC Part Number", "Quantity"])
+        for pn, order, need, spare, cmt, fp, refs in lines:
+            q = moq_round(pn, order, fp)
+            w.writerow([pn, q])
+            pf.write("%s,%d\n" % (pn, q))
 
     out2 = os.path.join(FAB, "order-elsewhere.csv")
     with open(out2, "w", newline="", encoding="utf-8") as fh:
@@ -117,22 +174,32 @@ def main():
     with open(txt, "w", encoding="utf-8") as fh:
         fh.write("Parts order for %d boards\n" % args.boards)
         fh.write("=" * 40 + "\n\n")
-        fh.write("1. From LCSC -- paste the first two columns of\n")
-        fh.write("   fab/order-lcsc.csv into their bulk-order box.\n\n")
+        fh.write("1. From LCSC -- paste fab/order-lcsc-paste.txt into their\n")
+        fh.write("   quick-order box, or upload order-lcsc-simple.csv.\n")
+        fh.write("   Order quantities are already rounded up to LCSC's\n")
+        fh.write("   minimum order quantity and order multiple.\n\n")
         fh.write("   %-12s %6s %7s  %-18s %s\n"
                  % ("part", "order", "needed", "comment", "designators"))
         for pn, order, need, spare, cmt, fp, refs in lines:
             fh.write("   %-12s %6d %7d  %-18s %s\n"
-                     % (pn, order, need, cmt[:18], refs[:46]))
-        fh.write("\n   %d distinct parts, %d pieces total\n"
-                 % (len(lines), sum(l[1] for l in lines)))
+                     % (pn, moq_round(pn, order, fp), need, cmt[:18], refs[:46]))
+        fh.write("\n   %d distinct parts, %d pieces after MOQ rounding\n"
+                 % (len(lines),
+                    sum(moq_round(l[0], l[1], l[5]) for l in lines)))
+        fh.write("   LCSC enforces the true per-part minimum at checkout, so\n"
+                 "   anything undercalled here is bumped there, not rejected.\n")
         fh.write("\n2. Not available from LCSC/JLC -- source separately\n\n")
         for refs, n, what, note in ELSEWHERE:
             fh.write("   %-12s x%-3d %s\n" % (refs, n * args.boards, what))
             fh.write("   %s\n\n" % ("             " + note))
 
-    print("wrote %s  (%d parts, %d pieces)"
-          % (os.path.relpath(out, PROJ), len(lines), sum(l[1] for l in lines)))
+    print("wrote %s  (%d parts, %d pieces after MOQ rounding)"
+          % (os.path.relpath(out, PROJ), len(lines),
+             sum(moq_round(l[0], l[1], l[5]) for l in lines)))
+    print("wrote %s  (2 columns, for LCSC's BOM tool)"
+          % os.path.relpath(simple, PROJ))
+    print("wrote %s  (paste straight into LCSC quick order)"
+          % os.path.relpath(paste, PROJ))
     print("wrote %s  (%d items)" % (os.path.relpath(out2, PROJ), len(ELSEWHERE)))
     print("wrote %s" % os.path.relpath(txt, PROJ))
     if unspecified:
