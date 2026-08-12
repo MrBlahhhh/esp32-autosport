@@ -1323,12 +1323,76 @@ def sim_budgets(plots):
     return fails
 
 
+# ================================================================ fidelity ===
+def sim_fidelity(plots):
+    """What sampling really does to logged data (scipy.signal).
+
+    Study 2 reported the anti-alias corner abstractly ('891 Hz is above the
+    430 Hz Nyquist'). This one answers the question a logger owner actually
+    has: a realistic sensor waveform plus engine noise goes through each
+    jumper mode's real RC, gets sampled at the ADS1115's 860 SPS, and the
+    error against the true signal is measured in percent of full scale.
+    """
+    from scipy import signal as sig
+    head("12. Logged-data fidelity through the channel filter at 860 SPS")
+    fails = []
+    rng = np.random.default_rng(7)
+    fs_hi = 100_000.0
+    t = np.arange(0, 2.0, 1 / fs_hi)
+    # Sensor truth: an AFR-style sweep with a 3 Hz oscillation on it.
+    truth = 2.5 + 1.5 * np.sin(2 * np.pi * 0.5 * t) \
+        + 0.3 * np.sin(2 * np.pi * 3.0 * t)
+    # Engine noise: alternator whine + ignition hash, 100 mV rms, band-
+    # limited 200 Hz - 5 kHz, exactly the stuff that folds down if the
+    # channel filter lets it through.
+    noise = rng.normal(0, 1, t.size)
+    b, a = sig.butter(3, [200 / (fs_hi / 2), 5000 / (fs_hi / 2)], "bandpass")
+    noise = sig.lfilter(b, a, noise)
+    noise *= 0.100 / max(noise.std(), 1e-12)
+    vin = truth + noise
+
+    fs_adc = 860.0
+    step = int(fs_hi / fs_adc)
+    print("    input: AFR-style sweep + 100 mV rms of 0.2-5 kHz engine")
+    print("    noise; sampled at 860 SPS through each mode's real filter.")
+    print()
+    print("    %-26s %9s %10s  %s"
+          % ("jumper setting", "corner", "log error", "verdict"))
+    for label, gain, f3 in (("0-5 V   (RANGE C-A)", 15.0 / 26.0, 261.0),
+                            ("0-16 V  (RANGE C-B)", 0.167, 891.0),
+                            ("bypass  (BYPASS)", 0.999, 1647.0)):
+        blp, alp = sig.butter(1, f3 / (fs_hi / 2))
+        filtered = sig.lfilter(blp, alp, vin * gain)
+        sampled = filtered[::step]
+        # The truth, seen through the same DC gain, at the sample instants:
+        ideal = (truth * gain)[::step]
+        err = sampled - ideal
+        # remove the filter's own settling from the score
+        err = err[20:]
+        rms = float(np.sqrt(np.mean(err ** 2)))
+        fs_span = 3.3
+        pct = rms / fs_span * 100
+        ok = pct < 1.0
+        print("    %-26s %7.0fHz %7.2f%%FS  %s"
+              % (label, f3, pct, "ok" if ok else
+                 "noisy logs -- average in firmware or accept"))
+        if pct >= 2.0:
+            fails.append("%s mode logs %.1f%% FS of noise+alias error"
+                         % (label.split()[0], pct))
+    print()
+    print("    The error is dominated by in-band noise the filter passes,")
+    print("    not by aliasing artifacts: oversample-and-average in firmware")
+    print("    (the ADS1115 at 860 SPS averaged 4:1 gives an effective")
+    print("    215 Hz rate with half the noise) if the logs look hairy.")
+    return fails
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", choices=["frontend", "analog", "buck",
                                        "ridethru", "inrush", "crank",
                                        "usb", "tolerance", "stability",
-                                       "canbus", "budgets"])
+                                       "canbus", "budgets", "fidelity"])
     ap.add_argument("--no-plots", action="store_true")
     args = ap.parse_args()
     plots = not args.no_plots
@@ -1358,6 +1422,8 @@ def main():
         fails += sim_canbus(plots)
     if args.only in (None, "budgets"):
         fails += sim_budgets(plots)
+    if args.only in (None, "fidelity"):
+        fails += sim_fidelity(plots)
 
     head("Summary")
     if not fails:

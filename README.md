@@ -768,6 +768,13 @@ footprint renaming, ATE isolation resistors on the buttons, bed-of-nails
 coverage scores and boundary scan are production-line concerns that a
 prototype run priced for flying-probe does not buy anything from.
 
+### Bring-up
+
+[`docs/BRINGUP.md`](docs/BRINGUP.md) is the staged first-power checklist —
+every step carries the expected value and points back at the simulation
+study that derived it. `fab/board.step` is the full 3D model for designing
+the dash enclosure around.
+
 ### Ordering note: BOM part-number coverage
 
 `fab/bom.csv` is in JLCPCB's format (`Comment,Designator,Footprint,JLCPCB
