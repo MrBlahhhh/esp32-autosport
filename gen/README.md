@@ -40,10 +40,12 @@ python gen/export_plots.py        # schematic.pdf + three board renders
 | `tidy_silk.py` | reference designator declutter; touches no copper |
 | `validate.py` | compares KiCad's own netlist node-for-node against `netlist.txt`, runs ERC |
 | `audit_pcb.py` | current capacity, antenna keepout, decoupling distance, thermal, drill overlaps |
-| `simulate.py` | ten ngspice/numpy studies of the circuits themselves |
+| `simulate.py` | twelve ngspice/numpy/scipy studies of the circuits themselves |
 | `audit_routes.py` | post-route extraction: IR drop over the real copper, bus lengths/skew, SW-node area |
 | `audit_straps.py` | every ESP32 strapping pin's state at reset vs what the netlist hangs on it |
 | `overstress.py` | closed-form worst-case for every external input |
+| `export_plots.py` | schematic.pdf + board renders (top, back, iso) into `plots/` |
+| `export_fab.py` | JLCPCB gerber zip, BOM csv, CPL csv into `fab/` (KiCad python) |
 
 ## Design rules the pipeline enforces mechanically
 
@@ -130,6 +132,39 @@ breaks connectivity for every symbol after it in the file — the netlist
 drops them with no error pointing anywhere near the cause. The emitter now
 flattens all whitespace in properties; keep it that way.
 
+## Writing simulation decks (ngspice gotchas, each cost an hour)
+
+- `tran` picks its own tmax and will step right over ns-scale pulses.
+  Always pass it explicitly: `tran <step> <stop> 0 <step>`.
+- An "ideal diode" as a tanh-blended behavioral source leaks backward.
+  Use a hard clamp: `B1 a b I=max(V(a)-V(b),0)/R_on`.
+- An RC delay hung directly on a behavioral comparator output loads it and
+  shifts the threshold. Buffer first: `Bbuf buf 0 V=V(comp)`, RC off `buf`.
+- LTRA transmission lines go unstable next to coupled inductors; the ideal
+  `T` element (`T1 p1 n1 p2 n2 Z0=120 TD=21n`) is solid. Calibrate drivers
+  to the datasheet's loaded test condition, not open-circuit levels.
+- `wrdata` on an AC vector writes complex pairs. Convert first:
+  `let m = mag(v(out))` and write `m`.
+- Keep component values in the decks in step with the schematic tables —
+  the duplication is deliberate; a disagreement is a bug report.
+
+## Fab outputs, plots, and the ordering package
+
+- JLCPCB BOM header is exactly `Comment,Designator,Footprint,JLCPCB Part #`.
+  Basic parts auto-match from the footprint+value; extended parts need a
+  real LCSC C-number in the part's `lcsc=` field — **never guess one**.
+  Parts without a number get listed in the project README for hand-matching
+  in the order UI. Check BOM designator count == CPL count after export.
+- `kicad-cli pcb render` needs its rotate argument quoted *inside* the
+  string: `["--rotate", "'-30,0,25'"]` — without the inner quotes the
+  leading `-` is eaten as a flag.
+- STEP model for enclosure work: `kicad-cli pcb export step --subst-models`.
+- **NTFS timestamp tunneling:** a regenerated file keeps its old
+  CreationTime — even through delete-then-recreate within ~15 s — and
+  Explorer's default "Date" column shows CreationTime, so fresh plots look
+  stale to the user. After regenerating, stamp them:
+  `Get-ChildItem plots | % { $_.CreationTime = $_.LastWriteTime }`.
+
 ## Build discipline (how a night of rebuilds went wrong)
 
 - **One build at a time, ever.** The `.build_board.lock` exists for this;
@@ -162,6 +197,18 @@ mistake the rung below cannot:
 
 ## Starting a new board from this pipeline
 
+The next boards are dedicated PCBs for **existing, running ESP32 projects**,
+so the requirements are not invented — they are extracted:
+
+0. Read the running project's firmware first. The pin map (`#define`s /
+   board config), the peripheral drivers it initialises (which buses, which
+   sensors, which voltages), and the modules on the current dev-board build
+   ARE the part tables. List every external connection the firmware
+   touches, then add the infrastructure the dev board was silently
+   providing: power input + protection, USB, decoupling, boot straps,
+   and (for anything in a vehicle) the ride-through/PWR_FAIL contract so
+   firmware can keep its existing shutdown behaviour.
+
 1. Copy `gen/` wholesale; delete the project-specific tables in
    `generate_schematic.py` (sheets/parts) and `generate_pcb.py` (zones,
    FIXED/BUCK_FIXED/PIN_FIXED, HOLES, board size) and `sch_blocks.py`.
@@ -173,3 +220,6 @@ mistake the rung below cannot:
 5. Keep `simulate.py`'s decks in step with the schematic tables — the
    component values are duplicated there on purpose, so a disagreement is
    a bug report.
+6. Before ordering: full ladder green, `export_fab.py`, BOM==CPL count,
+   `docs/BRINGUP.md`-style staged checklist written from the studies'
+   expected values, and JLC's free DFM at upload as the last gate.
