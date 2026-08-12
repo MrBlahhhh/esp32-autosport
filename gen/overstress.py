@@ -194,30 +194,41 @@ def main():
             worst.append("CAN %s" % name.split("(")[0].strip())
 
     # -------------------------------------------------------------- USB ----
-    head("4. USB VBUS  J2 -> PF2 (0.5 A hold) -> USBLC6 -> D5 -> +5V rail")
+    # This section described the rev A path and was never updated when rev B
+    # inserted the over-voltage cutoff, so it reported two FAILs for a fault
+    # the board now handles -- see README section 10, finding 5. The netlist is
+    # the authority: VBUS_IN (J2) -> PF2 -> VBUS_R -> Q4 source/drain -> VBUS,
+    # with Q5 + U6 (TLV431) pulling Q4's gate to its source once VBUS_R passes
+    # the divider's 5.77 V trip. The USBLC6 sits on VBUS, downstream of the
+    # switch, so it never sees the fault voltage at all.
+    head("4. USB VBUS  J2 -> PF2 (0.5 A) -> Q4 OVP switch -> USBLC6 -> D5 -> +5V")
     print("    The CC pins carry 5.1k pull-downs, so a compliant source only")
-    print("    ever offers 5 V. These are non-compliant-supply faults.")
+    print("    ever offers 5 V. These are non-compliant-supply faults, and")
+    print("    since rev B the series cutoff opens before they reach the rail.")
+    OVP_TRIP_V = 5.77          # R28/R29 divider into the TLV431 reference
     for name, v in (("compliant host, 5.25 V max", 5.25),
                     ("faulty supply at 12 V", 12.0),
                     ("faulty supply at 20 V", 20.0)):
-        if v <= 5.5:
-            row(name, "within USBLC6 5.25 V standoff; rail fine", True)
+        if v <= OVP_TRIP_V:
+            v_rail = v - 0.4
+            row(name, "below the %.2f V trip; Q4 stays on, +5V sees %.2f V"
+                % (OVP_TRIP_V, v_rail), True)
             continue
-        # PF2 holds 0.5 A and trips near 1 A, so the USBLC6's VBUS diode
-        # is what sets the node: roughly 17 V at 1 A for this part.
-        v_bus = min(v, 17.0)
-        v_rail = v_bus - 0.4                      # through D5
+        # Above the trip Q4 opens and stands the difference off drain-source.
+        # What matters then is that nothing downstream is exposed, and that Q4
+        # itself is inside its own ratings.
+        vds = v
         hits = [k for k in ("TJA1051 VCC", "74AHCT1G125 VCC")
-                if v_rail > LIMITS[k][0]]
-        row(name, "USBLC6 holds VBUS near %.1f V while PF2 trips; +5V driven "
-                  "to %.1f V through D5; over limit for %s"
-            % (v_bus, v_rail, ", ".join(hits) if hits else "nothing"),
-            not hits)
-        if hits:
-            worst.append("VBUS at %.0f V holds +5V at %.1f V until PF2 trips "
-                         "-- over %s; the USBLC6 is dissipating ~%.0f W "
-                         "meanwhile" % (v, v_rail, " and ".join(hits),
-                                        v_bus * 1.0))
+                if OVP_TRIP_V > LIMITS[k][0]]
+        fet_ok = vds <= 30.0        # AO3401A Vds rating
+        row(name, "Q4 opens at %.2f V; +5V never exceeds it. Q4 stands %.0f V "
+                  "across drain-source against its 30 V rating%s"
+            % (OVP_TRIP_V, vds, "" if fet_ok else " -- OVER"),
+            not hits and fet_ok)
+        if hits or not fet_ok:
+            worst.append("VBUS at %.0f V: %s"
+                         % (v, "Q4 over its Vds rating" if not fet_ok
+                            else "trip level still over " + " and ".join(hits)))
 
     # ------------------------------------------------------ sensor 5 V ----
     head("5. Sensor 5 V supply  +5V -> PF1 (0.2 A) -> ferrite -> SMAJ6.0A")
