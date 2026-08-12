@@ -185,6 +185,8 @@ void ble_event_hwmode(uint8_t v);
 // Power. The scenario drives the harness voltage; the model derives PWR_FAIL,
 // the ride-through budget and, when the budget runs out, the end of the run.
 void   power_set_vbat(double volts);
+// Override the board's ride-through window for one run (scenario: `budget`).
+void   power_set_budget(double shed_ms, double noshed_ms);
 double power_vbat();
 bool   power_failed();               // PWR_FAIL asserted
 double power_reserve();              // 1.0 = full cap bank, 0.0 = rails gone

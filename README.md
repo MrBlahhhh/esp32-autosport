@@ -574,6 +574,8 @@ thin-film divider resistors are commodity and auto-match on value + package.
 | `plots/board-back.png` | Render of the finished board, bottom — routing only, no parts |
 | `fab/` | Gerbers, drill, JLC BOM and pick-and-place (generated) |
 | `docs/PREORDER.md` | Pre-order checklist: what is checked, what is not, what to do at upload |
+| `gen/audit_paste.py` | Stencil apertures: IPC-7525 area ratio and thermal-pad paste coverage |
+| `gen/audit_mechanical.py` | Vibration screen: board resonance and Steinberg fatigue on the tall cans |
 | `docs/BRINGUP.md` | Staged first-power checklist, tied to the study values |
 | `firmware/esp32_shiftlight_wideband/` | Firmware for this board: shift light, wideband BLE bridge, microSD logger |
 | `firmware/vendor/` | Verbatim copy of the R53 sketch — the control build, do not edit |
@@ -906,6 +908,32 @@ redundant `flush()` before `close()` in the shutdown path — two full card
 writes instead of one — which had cut the tolerable card latency roughly in
 half. `sim/firmware.png` plots the shift light tracking CAN and the
 ignition-off sequence.
+
+### Assembly and mechanics
+
+Two checks that no ERC, DRC or SPICE run reaches, both added because the
+capacitor change made them relevant.
+
+**Stencil** (`gen/audit_paste.py`). Paste release is governed by IPC-7525's
+area ratio; below ~0.66 the paste stays in the aperture and the joint starves.
+The worst aperture here is **1.04** at JLC's standard 0.12 mm foil, so the
+0.5 mm-pitch USB-C is comfortable. At the other extreme, a large exposed pad
+given a solid aperture floats the part on molten solder: the three that matter
+are already windowed in the library footprints — `U5` to **48 %** across nine
+apertures, `U3` and `U4` to **44 %** across four each. Both converters sit
+slightly under the 50 % guide, which is safe for assembly and marginally thin
+for heat transfer; noted rather than changed.
+
+**Vibration** (`gen/audit_mechanical.py`). The ride-through capacitors are
+16 mm cans standing 22 mm off the board on two solder joints each — the
+tallest, heaviest parts on it, and 1.58× the overturning moment of the
+16 × 17.5 mm cans they replaced. Screened against ISO 16750-3 body-mount
+random vibration: first mode ~272 Hz, 26.6 Grms response by Miles' equation,
+0.267 mm of 3-sigma deflection against a **0.44 mm** Steinberg 10⁷-cycle
+limit. It passes, with **1.7×** margin — thin enough that a bead of RTV or
+epoxy staking each can at assembly is cheap insurance, and the script says so.
+These are screening calculations with their assumptions printed; they say
+"fine", not "qualified".
 
 ### External DFT review
 

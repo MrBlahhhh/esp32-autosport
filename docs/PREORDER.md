@@ -13,7 +13,9 @@ python gen/validate.py            # schematic vs netlist.txt, plus ERC
 python gen/audit_docs.py          # docs vs design: designators and numbers
 python gen/audit_polarity.py      # every polarised part, plus a fab checklist
 python gen/simulate.py            # 12 circuit studies (needs ngspice)
-python gen/simulate_firmware.py   # 33 firmware-in-the-loop checks
+python gen/simulate_firmware.py   # 35 firmware-in-the-loop checks
+python gen/audit_paste.py         # stencil apertures: IPC-7525 + thermal-pad coverage
+python gen/audit_mechanical.py    # vibration screen for the tall capacitors
 "…/KiCad/9.0/bin/python.exe" gen/audit_pcb.py
 "…/KiCad/9.0/bin/python.exe" gen/audit_routes.py
 "…/KiCad/9.0/bin/python.exe" gen/audit_straps.py
@@ -33,6 +35,8 @@ All of the above pass as of 2026-08-12.
 | Polarity of every diode, electrolytic, IC | `audit_polarity.py` | a part designed in backwards |
 | Circuit behaviour, 12 studies | `simulate.py` | ISO 7637-2 survival, ripple, ride-through, inrush, crank, tolerances |
 | Firmware against a model of this board | `simulate_firmware.py` | wrong GPIO, wrong divider constant, an unspent power-fail window |
+| Stencil apertures | `audit_paste.py` | starved fine-pitch joints; a thermal pad given so much paste the part floats |
+| Vibration on the tall parts | `audit_mechanical.py` | solder-joint fatigue on the 22 mm capacitor cans |
 | Copper: current capacity, decoupling distance, thermals, overlapping drills | `audit_pcb.py` | a 1 A rail on 0.2 mm track; two vias drilled on one point |
 | Routing quality | `audit_routes.py` | |
 | Strapping pins | `audit_straps.py` | a boot pin held the wrong way |
@@ -52,29 +56,31 @@ All of the above pass as of 2026-08-12.
 
 ## 3. Not yet done — worth doing before ordering
 
-Ranked by what they would cost if skipped.
+Ranked by what they would cost if skipped. Items 1-3 of the original list are
+now automated and green (see above); what is left is the part that needs
+someone else's data or a physical model.
 
 1. **JLC's own DFM report.** Free at upload, and it checks their actual
    process: minimum annular ring, solder-mask sliver, silkscreen-on-pad,
    acid traps. Nothing here models their fab. **Upload the gerbers and read
-   the report before paying** — this is the single highest-value remaining
-   check and it costs nothing.
+   the report before paying** — the single highest-value remaining check, and
+   it costs nothing.
 2. **Placement preview, part by part.** `audit_polarity.py` prints the 32
    parts that have an orientation with board position and which net pin 1
    sits on. Every polarised part is placed at 0°, so anything that appears
    rotated in JLC's previewer is their library, not this design.
-3. **Stencil / paste apertures.** The USB-C at 0.5 mm pitch and the module's
-   thermal pad are the two places a 1:1 paste layer misbehaves. JLC's default
-   stencil is usually right, but the module's exposed pad wants a windowed
-   aperture (60–80 % coverage) rather than one solid opening, or it floats on
-   solder. Not modelled anywhere in `gen/`.
-4. **3D clearance against the enclosure.** `fab/board.step` is current, but the
-   ride-through capacitors went from 16×17.5 mm to 16×22 mm — 4.5 mm taller,
-   and they are the tallest parts on the board. Re-check the dash enclosure
-   against the new STEP before committing to a case.
-5. **Thermal re-check at the new bank.** The capacitors moved but the
-   converters did not; `audit_pcb.py` still passes. Worth one look at whether
-   the taller cans shadow airflow over `U3`/`U4` in the intended orientation.
+3. **3D clearance against the enclosure.** `fab/board.step` is current, but
+   the ride-through capacitors went from 16×17.5 mm to 16×22 mm. Re-check the
+   dash enclosure against the new STEP.
+4. **A behavioural COT loop model.** `simulate.py` drives the LM5164 power
+   stage at an ideal duty cycle because TI's model is encrypted, so loop
+   stability and load-step recovery are answered by nothing at all. A
+   behavioural constant-on-time model in ngspice would not be silicon-exact
+   but would close that gap.
+5. **2-D thermal solve at 70 °C ambient.** `audit_pcb.py` does closed-form
+   per-part dissipation into copper area; a finite-difference solve over the
+   real pours would catch interactions, including whether the taller cans now
+   shadow `U3`/`U4`.
 
 ## 4. Things that cannot be checked without hardware
 
@@ -94,6 +100,10 @@ State them rather than pretend otherwise:
   implementation: no NimBLE bug, stack overflow, RMT conflict, PSRAM init
   problem or FreeRTOS scheduling issue can appear in it.
 - **`+5VS` accuracy for ratiometric sensors** (§7 item 7), still open.
+- **The vibration screen is a screen.** `audit_mechanical.py` idealises the
+  board as a simply-supported plate and uses Steinberg's empirical fatigue
+  limit. It says "fine with 1.7x margin", not "qualified". Its assumptions are
+  printed with every run for exactly that reason.
 
 ## 5. Ordering-day gotchas already known
 

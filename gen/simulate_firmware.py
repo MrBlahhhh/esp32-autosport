@@ -652,6 +652,75 @@ def _first_time(run, pred):
     return None
 
 
+def study_worst_case(exes):
+    head("12. The same ignition cut, on a flat battery")
+    print("  Every other firmware study runs against the 154 ms window study 4")
+    print("  measures with a healthy 13.5 V battery. That is not the case that")
+    print("  decides anything. Open the ignition with the harness already at the")
+    print("  11 V trip point and +VBAT starts its coast from 10.7 V, not 13.5 --")
+    print("  energy goes as V-squared, and gen/simulate.py's Monte Carlo puts")
+    print("  the 0.1% corner at 51 ms with caps -20% and load +40%.")
+    print("    %-26s %10s %10s %9s" % ("window", "closed at", "collapse", "verdict"))
+    rows = []
+    for label, shed, noshed in (("nominal, healthy battery", 154.4, 74.7),
+                                ("flat battery, median", 78.0, 38.0),
+                                ("flat battery, 0.1% corner", 51.0, 25.0)):
+        scn = f"""board autosport
+duration 2500
+trace 1
+@0 vbat 13.8
+@0 sensorrail 1 5vs
+@0 budget {shed} {noshed}
+@0 canid 0x316
+@0 canrate 100
+@0 rpm 3000
+@1000 vbat 0.0
+"""
+        r = Run("worstcase_%d" % int(shed), exes["autosport"], scn)
+        pf = float(r.summary.get("PWR_FAIL_ms", "nan"))
+        lost = "SD_OPEN_AT_POWER_LOSS" in set(r.codes())
+        closed = None if lost else _first_time(
+            r, lambda row: row["sd_open"] == 0 and row["t_ms"] > pf)
+        collapse = r.rows[-1]["t_ms"]
+        rows.append((label, shed, closed, pf, collapse, lost))
+        print("    %-26s %9s %9.0fms %9s"
+              % (label + " (%.0f ms)" % shed,
+                 "LOST" if lost else "+%.0f ms" % (closed - pf),
+                 collapse - pf,
+                 "FILE LOST" if lost else "ok"))
+    worst = rows[-1]
+    check(not worst[5],
+          "the log survives an ignition cut on a flat battery at the 0.1% corner",
+          "file closed %s a %.0f ms window"
+          % ("+%.0f ms into" % (worst[2] - worst[3]) if worst[2] else "never within", worst[1]))
+    # How slow a card still fits inside the *worst-case* window, not the nominal.
+    print("\n  Card latency the 51 ms corner tolerates:")
+    last_ok = None
+    for flush_ms in (10, 18, 25, 30, 35, 40, 50):
+        scn = f"""board autosport
+duration 2500
+trace 1
+@0 vbat 13.8
+@0 sensorrail 1 5vs
+@0 budget 51 25
+@0 sdflush {flush_ms}
+@0 canid 0x316
+@0 canrate 100
+@0 rpm 3000
+@1000 vbat 0.0
+"""
+        r = Run("worstflush_%03d" % flush_ms, exes["autosport"], scn)
+        lost = "SD_OPEN_AT_POWER_LOSS" in set(r.codes())
+        print("    %3d ms flush -> %s" % (flush_ms, "LOST" if lost else "closed"))
+        if not lost:
+            last_ok = flush_ms
+    check(last_ok is not None and last_ok >= 18,
+          "a healthy card (~18 ms flush) still fits the worst-case window",
+          "safe up to a %s ms flush against 130 ms on the nominal window"
+          % last_ok)
+    return rows
+
+
 def study_flush_margin(exes):
     head("11. How slow can the card be before the file is lost?")
     print("  README section 2 says the shed path 'covers even a card that")
@@ -802,6 +871,8 @@ def main():
         study_crank(exes, "autosport", "ported")
         if run_it(11, "flush"):
             study_flush_margin(exes)
+        if run_it(12, "worstcase"):
+            study_worst_case(exes)
         if not args.no_plots:
             plot({"rpm": r, "ignition": r2}, os.path.join(PROJ, "sim", "firmware.png"))
 

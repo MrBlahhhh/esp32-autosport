@@ -206,6 +206,11 @@ struct State {
   double pwr_fail_at_ms;
   double reserve;
   bool lost;
+  // Scenario override for the ride-through window: study 4 measures the
+  // healthy-battery case, but a flat battery is a different and much shorter
+  // event, and firmware has to fit inside that one.
+  double budget_shed_ms;
+  double budget_noshed_ms;
 
   // SD
   bool sd_begun;
@@ -260,6 +265,7 @@ State& S() {
     memset(&s.hooks, 0, sizeof s.hooks);
     s.vbat = 13.8; s.pwr_fail = false; s.pwr_fail_observed = false;
     s.pwr_fail_at_ms = -1.0; s.reserve = 1.0; s.lost = false;
+    s.budget_shed_ms = 0.0; s.budget_noshed_ms = 0.0;
     s.sd_begun = false;
     s.sd_open_flag = false; s.sd_unflushed_bytes = 0; s.sd_flush_ms = 18.0;
     s.sd_stalled = false; s.sd_powered_note = false;
@@ -414,7 +420,9 @@ void step(uint64_t dt_us) {
     }
   }
   if (s.vbat < 6.0) {   // LM74700 UVLO / LM5164 dropout: the harness is gone
-    double budget_ms = sens_rail_live() ? b.ridethru_noshed_ms : b.ridethru_shed_ms;
+    double shed = s.budget_shed_ms > 0 ? s.budget_shed_ms : b.ridethru_shed_ms;
+    double noshed = s.budget_noshed_ms > 0 ? s.budget_noshed_ms : b.ridethru_noshed_ms;
+    double budget_ms = sens_rail_live() ? noshed : shed;
     s.reserve -= (dt_us / 1000.0) / budget_ms;
     if (s.reserve <= 0.0 && !s.lost) {
       s.reserve = 0.0;
@@ -871,6 +879,10 @@ void ble_event_hwmode(uint8_t v) {
 // Power and sensors
 
 void power_set_vbat(double v) { S().vbat = v; }
+void power_set_budget(double shed_ms, double noshed_ms) {
+  S().budget_shed_ms = shed_ms;
+  S().budget_noshed_ms = noshed_ms;
+}
 double power_vbat() { return S().vbat; }
 bool power_failed() { return S().pwr_fail; }
 double power_reserve() { return S().reserve; }
@@ -1081,6 +1093,7 @@ void apply_event(const std::vector<std::string>& a) {
   else if (c == "ads") ads_set_present(num(a, 1, 1) != 0);
   else if (c == "sdstall") sd_set_stalled(num(a, 1, 1) != 0);
   else if (c == "sdflush") sd_set_flush_ms(num(a, 1, 18));
+  else if (c == "budget") power_set_budget(num(a, 1, 152), num(a, 2, 75));
   else if (c == "ble") {
     const std::string& w = a.size() > 1 ? a[1] : std::string();
     if (w == "connect") ble_event_connect();
