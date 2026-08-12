@@ -173,6 +173,16 @@ flush and close the file, then idle. Do not start a new write while
 `PWR_FAIL` is high. The window is guaranteed by hardware; spending it is
 firmware's job.
 
+### Reversed 5 V on the exposed 5 V pins
+
+Asked and answered per connector: **USB-C** cannot be reversed through the
+connector (VBUS/GND positions are fixed; the plug is rotation-symmetric).
+**J10 sensor +5VS** survives a reversed 5 V by design — D3 forward-conducts
+at −0.7 V and PF1 trips, resettable. A **backwards WS2812 strip** trips PF3;
+the strip is on its own. **J8 rail break-out is unprotected** — it is a bare
+bench header, and a reversed supply clipped onto it lands directly on the
++5 V rail's loads. Treat J8 like any bare rail.
+
 ### 5 V sensor excitation
 
 `+5VS` is the +5 V rail behind the `SENS_EN` load switch, `PF1` (200 mA hold
@@ -757,6 +767,18 @@ test points" are already on 0.1" headers, which beat test points; IPC-7351B
 footprint renaming, ATE isolation resistors on the buttons, bed-of-nails
 coverage scores and boundary scan are production-line concerns that a
 prototype run priced for flying-probe does not buy anything from.
+
+### Ordering note: BOM part-number coverage
+
+`fab/bom.csv` is in JLCPCB's format (`Comment,Designator,Footprint,JLCPCB
+Part #`), and BOM/CPL designators are machine-verified to agree. 21 lines
+carry verified LCSC numbers; 39 blank lines are plain 0805/1206 R/C that
+JLC's order flow auto-matches from value + package. **Twelve extended lines
+must be matched by hand in the order UI** (search the Comment, pick the
+stocked equivalent): the 220 uF/100 V and 100 uF/100 V electrolytics, the
+green LED, PMEG4010, the 0466 2 A fuse, both Wurth beads, the Sunlord 22 uH,
+DMG2301L, the TL3342 buttons, TLV431ASN1T1G and SN74AHCT1G125. Never guess a
+C-number into the file -- a wrong part number assembles the wrong part.
 
 ## 11. Handoff — remaining work
 

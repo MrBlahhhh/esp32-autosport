@@ -1,7 +1,6 @@
 Qty (1 board),Qty (10 boards),References,Value,Voltage,Tolerance,Footprint,Manufacturer part number,LCSC,Notes
 1,10,C1,1uF,50V,,Capacitor_SMD:C_0805_2012Metric,,,LM74700 charge-pump reservoir
-2,20,C10 C19,2.2nF,50V,,Capacitor_SMD:C_0805_2012Metric,,,Bootstrap: datasheet mandates exactly 2.2nF X7R -- a larger value overstresses the internal VCC regulator and damages the device
-2,20,C11 C20,3.3nF,50V,,Capacitor_SMD:C_0805_2012Metric,,,Ramp capacitor CA
+4,40,C10 C11 C19 C20,2.2nF,50V,,Capacitor_SMD:C_0805_2012Metric,,,Bootstrap: datasheet mandates exactly 2.2nF X7R -- a larger value overstresses the internal VCC regulator and damages the device
 2,20,C12 C21,270pF,50V,,Capacitor_SMD:C_0805_2012Metric,,,Ramp coupling capacitor CB
 4,40,C13 C14 C22 C23,22uF,16V,,Capacitor_SMD:C_1206_3216Metric,,,
 15,150,C15 C24 C28 C29 C31 C32 C34 C35 C36 C38 C39 C40 C41 C42 C43,100nF,16V,,Capacitor_SMD:C_0805_2012Metric,,,
@@ -14,14 +13,14 @@ Qty (1 board),Qty (10 boards),References,Value,Voltage,Tolerance,Footprint,Manuf
 2,20,C6 C7,220uF,100V,,Capacitor_SMD:CP_Elec_16x17.5,,,"Power-fail ride-through. With the sensor rail shed and the LEDs off the board draws about 0.35 W here, so the bank holds the rails up for roughly 70 ms -- enough to finish the block in flight and close the file. Any 220uF >=80V on a 16x17.5 land works; match in the JLC catalogue at order. Pin 1 is +"
 1,10,C8,1nF,50V,,Capacitor_SMD:C_0805_2012Metric,,,Just enough to keep switching noise off the reference. Larger would delay the very detection this exists to make early
 2,20,C18 C9,10nF,100V,,Capacitor_SMD:C_0805_2012Metric,,,EN sits on a bare 100k to VBAT; this keeps a high-impedance enable node quiet in a vehicle
-1,10,D1,SMCJ40CA,,,Diode_SMD:D_SMC,Littelfuse SMCJ40CA,,"40V standoff / 64.5V clamp @ 1500W, bidirectional: absorbs ISO 7637-2 pulse 5b load dump and the negative pulses, ahead of the FET. 40V not 33V so the part stands off the declared 36V input top"
-1,10,D2,3.6V 300mW,,,Diode_SMD:D_SOD-323,onsemi MM3Z3V6T1G,,Rail clamp: an analog input shorted to battery back-feeds ~1.6mA through its BAT54S into +3V3; with the MCU asleep the rail would otherwise float above the ESP32's 3.6V absolute maximum
-1,10,D3,SMAJ6.0A,,,Diode_SMD:D_SMA,Littelfuse SMAJ6.0A,,"Clamps harness-injected transients on the sensor 5V. 6.0V standoff, not 5.0V: a 5.0V part on a 5.0V rail leaks up to 800uA continuously"
+1,10,D1,SMCJ40CA,,,Diode_SMD:D_SMC,Littelfuse SMCJ40CA,C80273,"40V standoff / 64.5V clamp @ 1500W, bidirectional: absorbs ISO 7637-2 pulse 5b load dump and the negative pulses, ahead of the FET. 40V not 33V so the part stands off the declared 36V input top"
+1,10,D2,3.6V 300mW,,,Diode_SMD:D_SOD-323,onsemi MM3Z3V6T1G,C116949,Rail clamp: an analog input shorted to battery back-feeds ~1.6mA through its BAT54S into +3V3; with the MCU asleep the rail would otherwise float above the ESP32's 3.6V absolute maximum
+1,10,D3,SMAJ6.0A,,,Diode_SMD:D_SMA,Littelfuse SMAJ6.0A,C223993,"Clamps harness-injected transients on the sensor 5V. 6.0V standoff, not 5.0V: a 5.0V part on a 5.0V rail leaks up to 800uA continuously"
 1,10,D4,green,,,LED_SMD:LED_0805_2012Metric,,,"The board's only LED: +3V3 is up, so the whole supply chain came through -- battery, ideal diode, and both converters"
 1,10,D5,40V 1A,,,Diode_SMD:D_SOD-123,PMEG4010,,"OR-ing: bench USB can power the board, but the 5V buck (5.00V) reverse-biases it whenever the car is connected"
-2,20,D6 D7,SMAJ26CA,,,Diode_SMD:D_SMA,Littelfuse SMAJ26CA,,Bidirectional bus clamp
-4,40,D10 D12 D14 D8,SMAJ40CA,,,Diode_SMD:D_SMA,Littelfuse SMAJ40CA,,"Ch1 harness transient clamp (bidirectional, 400W)"
-5,50,D11 D13 D15 D16 D9,BAT54S,,,Package_TO_SOT_SMD:SOT-23,BAT54S,,Ch1 rail clamp (both polarities)
+2,20,D6 D7,SMAJ26CA,,,Diode_SMD:D_SMA,Diodes Inc SMAJ26CA-13-F,C134976,Bidirectional bus clamp
+4,40,D10 D12 D14 D8,SMAJ40CA,,,Diode_SMD:D_SMA,Littelfuse SMAJ40CA,C223989,"Ch1 harness transient clamp (bidirectional, 400W)"
+5,50,D11 D13 D15 D16 D9,BAT54S,,,Package_TO_SOT_SMD:SOT-23,MDD BAT54S,C408389,Ch1 rail clamp (both polarities)
 1,10,F1,2A slow,,,Fuse:Fuse_1206_3216Metric,Littelfuse 0466002.NR,,"Sacrificial: only opens on a hard fault, not on reverse polarity"
 1,10,FB1,600R,,,Inductor_SMD:L_1206_3216Metric,Wurth 742792625,,Conducted-emissions bead
 1,10,FB2,600R,,,Inductor_SMD:L_0805_2012Metric,Wurth 742792022,,
@@ -59,7 +58,7 @@ Qty (1 board),Qty (10 boards),References,Value,Voltage,Tolerance,Footprint,Manuf
 1,10,Q3,2N7002,,,Package_TO_SOT_SMD:SOT-23,onsemi 2N7002,C8545,"Level shifter: the P-FET's gate has to be pulled to GND from 5V, and a 3.3V GPIO cannot do that directly"
 1,10,Q5,MMBT3906,,,Package_TO_SOT_SMD:SOT-23,onsemi MMBT3906,C8544,Pulls the P-FET gate to its source on overvoltage
 1,10,Q6,DMG2301L,,,Package_TO_SOT_SMD:SOT-23,DMG2301L,,High-side switch so firmware can power-cycle a wedged card
-1,10,Q7,2N7002,,,Package_TO_SOT_SMD:SOT-23,2N7002,,Level shift for the P-ch gate. Prefer an AEC-Q101 equivalent: the standard 2N7002 is not automotive qualified
+1,10,Q7,2N7002,,,Package_TO_SOT_SMD:SOT-23,2N7002,C8545,Level shift for the P-ch gate. Prefer an AEC-Q101 equivalent: the standard 2N7002 is not automotive qualified
 13,130,R1 R10 R12 R15 R16 R18 R21 R27 R39 R41 R7 R77 R9,100k,,,Resistor_SMD:R_0805_2012Metric,,,UVLO upper leg
 2,20,R11 R13,31.6k,,,Resistor_SMD:R_0805_2012Metric,,,"RON = 5.0V x 2500 / 400kHz (Eq 12) -> 396kHz; tON = 237ns at the 53.3V clamp, comfortably above the 50ns minimum"
 1,10,R14,121k,,,Resistor_SMD:R_0805_2012Metric,,,Ripple-injection ramp resistor RA

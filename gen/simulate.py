@@ -1098,6 +1098,23 @@ def sim_tolerance(plots):
         if lo < nom * 0.95:
             fails.append("%s can fall %.1f%% low" % (rail, (1 - lo/nom)*100))
 
+    # Ride-through window at the bad corner: electrolytics are -20/+20%,
+    # the load estimate is soft, and the window must still cover a flush.
+    c_bank = (100e-6 * (1 + rng.uniform(-0.2, 0.2, N))
+              + 2 * 220e-6 * (1 + rng.uniform(-0.2, 0.2, N)))
+    p_load = 0.35 * (1 + rng.uniform(-0.2, 0.4, N))
+    v0 = 11.0 - 0.3                       # detect, less hysteresis band
+    window = c_bank * (v0 ** 2 - 6.0 ** 2) / (2 * p_load)
+    lo = float(np.percentile(window, 0.1))
+    print("    ride-through     : %4.0f ms median, %4.0f ms at the 0.1%% "
+          "corner (caps -20%%, load +40%%)"
+          % (float(np.median(window)) * 1e3, lo * 1e3))
+    # The gate is the healthy-card flush (~10-30 ms). Covering a stalled
+    # card was never in reach even at nominal (55 ms median) -- that risk
+    # class is handled by firmware flushing often, per the README.
+    if lo < 0.030:
+        fails.append("ride-through window can fall to %.0f ms" % (lo * 1e3))
+
     # Battery monitor: 1% divider into a 1%-ish calibrated ADC.
     div = r(8.2e3, 1) / (r(100e3, 1) + r(8.2e3, 1))
     err_b = (div / (8.2 / 108.2) - 1) * 100
@@ -1107,11 +1124,211 @@ def sim_tolerance(plots):
     return fails
 
 
+# =============================================================== stability ===
+def sim_stability(plots):
+    """The LM5164's ripple-injection criterion, analytically.
+
+    The control loop itself hides inside TI's encrypted model, but a COT
+    converter's stability reduces to one requirement the datasheet states
+    outright: the injected ramp at FB during the on-time must be large
+    enough (and in phase) for clean valley detection.  That amplitude is
+    (VIN - VOUT) * tON / (RA * CA), and it shrinks as VIN falls toward
+    dropout -- so the number to know is the worst corner, not the nominal.
+    """
+    head("9. Buck ripple-injection amplitude across the input window")
+    print("    Requirement: >= ~15 mV of injected ramp at FB for clean COT")
+    print("    valley switching (TI SNVSAI2, ripple-injection network).")
+    print()
+    fails = []
+    fsw = 400e3
+    print("    %-6s %6s | %s" % ("rail", "Vin", "ramp at FB, worst-tolerance"))
+    for rail, vout, ra, ca in (("+5V", 5.0, 121e3, 2.2e-9),
+                               ("+3V3", 3.3, 95.3e3, 2.2e-9)):
+        for vin in (6.0, 8.0, 13.5, 24.0, 36.0):
+            if vin <= vout + 0.5:
+                continue
+            ton = vout / (vin * fsw)
+            # worst case: RA +1 %, CA +10 % both shrink the ramp
+            ramp = (vin - vout) * ton / (ra * 1.01 * ca * 1.10)
+            note = ""
+            if ramp < 0.015:
+                note = ("thin -- acceptable only because a harness this low "
+                        "is a crank event, not an operating point")
+                if vin >= 8.0:
+                    fails.append("%s ramp is %.1f mV at %.0f V in"
+                                 % (rail, ramp * 1e3, vin))
+            print("    %-6s %5.1fV | %5.1f mV  %s"
+                  % (rail, vin, ramp * 1e3, note))
+    return fails
+
+
+# ================================================================== canbus ===
+def sim_canbus(plots):
+    """TJA1051 through the common-mode choke and split termination into a
+    real cable: does a dominant bit arrive clean at the far end?"""
+    head("10. CAN bus: dominant bit through choke, split term and 5 m of bus")
+    fails = []
+    deck = """* CAN dominant-recessive-dominant through the on-board network
+%s
+
+* Driver calibrated to the TJA1051 datasheet: 2.0 V typical differential
+* INTO the 60 ohm double termination, i.e. 3.0 V open-circuit behind
+* 15 ohm per leg. Recessive releases both to a weak 2.5 V hold.
+Vctl  c 0 PULSE(0 1 200n 5n 5n 1u 2u)
+Vhi   vh 0 DC 4.0
+Vlo   vl 0 DC 1.0
+Vmid  vm 0 DC 2.5
+Bh    th 0 V = V(c) > 0.5 ? V(vh) : V(vm)
+Bl    tl 0 V = V(c) > 0.5 ? V(vl) : V(vm)
+Rh    th canh_t 15
+Rl    tl canl_t 15
+
+* 51 uH common-mode choke, k = 0.995: near-transparent differentially.
+Lh    canh_t canh 51u
+Ll    canl_t canl 51u
+K1    Lh Ll 0.995
+
+* Split termination on-board: 60 + 60 with the centre decoupled.
+Rs1   canh split 60
+Rs2   canl split 60
+Cs    split 0 4.7n
+
+* Clamps' parasitic capacitance at the connector.
+Ch    canh 0 30p
+Cl    canl 0 30p
+
+* 5 m of bus at 120 ohm, ~21 ns of flight, terminated at the far end.
+* An ideal T element rather than LTRA: the lossy model went numerically
+* wild against the coupled choke and reported more differential volts at
+* the far end than the driver can produce.
+T1    canh canl far_h far_l Z0=120 TD=21n
+Rterm far_h far_l 120
+Rfh   far_h 0 1meg
+Rfl   far_l 0 1meg
+
+.control
+set filetype=ascii
+set wr_singlescale
+tran 1n 2u 0 1n
+wrdata @DAT@ v(canh) v(canl) v(far_h) v(far_l)
+quit
+.endc
+.end
+""" % MODELS
+    d = run_deck("canbus", deck, ["v(canh)", "v(canl)", "v(far_h)",
+                                  "v(far_l)"])
+    t = d["x"]
+    dif_near = d["v(canh)"] - d["v(canl)"]
+    dif_far = d["v(far_h)"] - d["v(far_l)"]
+    w = (t > 0.6e-6) & (t < 1.1e-6)      # settled dominant portion
+    dom_far = float(dif_far[w].mean())
+    ring = float(dif_far.max() - dif_far[w].max())
+    print("    dominant differential at the far end: %.2f V "
+          "(ISO 11898 wants 1.5-3.0)" % dom_far)
+    print("    worst overshoot beyond settled level: %.2f V" % max(ring, 0))
+    if not 1.5 <= dom_far <= 3.0:
+        fails.append("far-end dominant level %.2f V is outside 1.5-3.0 V"
+                     % dom_far)
+    if plots:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(9, 4), constrained_layout=True)
+        ax.plot(t * 1e6, dif_near, lw=1.0, label="node (this board)")
+        ax.plot(t * 1e6, dif_far, lw=1.0, label="far end, 5 m")
+        ax.axhline(1.5, color="r", ls=":", lw=0.8)
+        ax.set_xlabel("us")
+        ax.set_ylabel("CANH - CANL, V")
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=8)
+        ax.set_title("dominant bit through choke + split termination")
+        out = os.path.join(SIM, "canbus.png")
+        fig.savefig(out, dpi=110)
+        plt.close(fig)
+        print("    wrote %s" % out)
+    return fails
+
+
+# ================================================================= budgets ===
+def sim_budgets(plots):
+    """System-level budgets -- the failures that read 'marginal in July'
+    rather than 'broken on the bench'. All analytic."""
+    head("11. System budgets: thermal, fuse, I2C, LED chain, SD switch")
+    fails = []
+
+    # --- enclosure thermal --------------------------------------------------
+    # Worst continuous: both bucks loaded (0.55 W loss each), ESP32 logging
+    # with WiFi bursts (~1.0 W average), CAN + SD + sensors (~0.4 W).
+    # The board mounts IN THE DASH: cabin hot-soak ambient (~70 C parked in
+    # the sun), not the 85 C engine bay. The bay column stays as the answer
+    # to "what happens if it ever moves there": a sealed plastic box in the
+    # bay would exceed the electrolytics' 105 C rating.
+    p_diss = 0.55 * 2 + 1.0 + 0.4
+    print("    Enclosure thermal, %.1f W dissipated inside the box:" % p_diss)
+    print("      %-34s %-8s %-8s %s"
+          % ("enclosure", "rise", "70C dash", "85C bay"))
+    for label, rth in (("sealed ABS ~100x120x40", 9.0),
+                       ("vented ABS, same size", 5.5),
+                       ("diecast aluminium on a bracket", 3.5)):
+        rise = p_diss * rth
+        t_dash, t_bay = 70 + rise, 85 + rise
+        note = "ok in the dash" if t_dash <= 100 else "HOT even in the dash"
+        if t_bay > 105:
+            note += "; a bay mount would exceed the caps' 105 C"
+        print("      %-34s +%4.1f C %6.1f C %6.1f C  %s"
+              % (label, rise, t_dash, t_bay, note))
+        if t_dash > 105:
+            fails.append("%s exceeds 105 C even at dash ambient" % label)
+
+    # --- fuse derating ------------------------------------------------------
+    # A fuse holds ~87 % of its rating at a 70 C dash hot-soak; guidance
+    # loads it to no more than 75 % of that. (An 85 C engine bay would put
+    # it right on the line -- relevant only if the board moves there.)
+    i_load = 1.20                      # both bucks flat out at 8 V input
+    i_eff = 2.0 * 0.87
+    util = i_load / i_eff
+    print("\n    F1 (2 A slow) at a 70 C dash: effective %.2f A, load "
+          "%.2f A -> %.0f %% utilisation" % (i_eff, i_load, util * 100))
+    if util > 0.75:
+        fails.append("F1 sits at %.0f%% of its derated rating" % (util * 100))
+
+    # --- I2C rise time ------------------------------------------------------
+    # 4.7k pull-ups; ~30 pF on-board (module + ADS1115 + trace). External
+    # Qwiic devices add ~10 pF each plus ~50 pF per metre of cable.
+    print("\n    I2C at 400 kHz needs t_r <= 300 ns (0.847*R*C):")
+    for ext, label in ((0, "on-board only"),
+                       (60, "2 Qwiic devices, 0.5 m cable"),
+                       (150, "4 devices, 1.5 m of cable")):
+        c = (30 + ext) * 1e-12
+        tr = 0.847 * 4700 * c
+        print("      %-28s %4.0f pF -> t_r %4.0f ns  %s"
+              % (label, 30 + ext, tr * 1e9,
+                 "ok" if tr <= 300e-9 else "drop the bus to 100 kHz"))
+
+    # --- WS2812 chain -------------------------------------------------------
+    print("\n    WS2812 header: PF3 holds 0.5 A -> %d LEDs at full white, "
+          "~%d at typical shift-light duty"
+          % (int(0.5 / 0.060), int(0.5 / 0.020)))
+
+    # --- SD power switch ----------------------------------------------------
+    r_on = 0.090                       # DMG2301L at Vgs = 3.3 V
+    drop = r_on * 0.100
+    print("\n    SD_VDD switch: DMG2301L ~%.0f mR at Vgs 3.3 -> %.0f mV "
+          "drop in a 100 mA write burst; %.0f mV of margin to the card's "
+          "2.7 V floor" % (r_on * 1e3, drop * 1e3, (3.3 - 2.7 - drop) * 1e3))
+
+    # --- connector contacts -------------------------------------------------
+    print("\n    JST-PH contacts are 2 A parts: J1 pin 1 carries 1.20 A "
+          "continuous (60%), J10's two +5VS pins share 0.2 A. ok")
+    return fails
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", choices=["frontend", "analog", "buck",
                                        "ridethru", "inrush", "crank",
-                                       "usb", "tolerance"])
+                                       "usb", "tolerance", "stability",
+                                       "canbus", "budgets"])
     ap.add_argument("--no-plots", action="store_true")
     args = ap.parse_args()
     plots = not args.no_plots
@@ -1135,6 +1352,12 @@ def main():
         fails += sim_usb(plots)
     if args.only in (None, "tolerance"):
         fails += sim_tolerance(plots)
+    if args.only in (None, "stability"):
+        fails += sim_stability(plots)
+    if args.only in (None, "canbus"):
+        fails += sim_canbus(plots)
+    if args.only in (None, "budgets"):
+        fails += sim_budgets(plots)
 
     head("Summary")
     if not fails:

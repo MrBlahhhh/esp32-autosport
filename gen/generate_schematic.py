@@ -534,7 +534,7 @@ part(pw, "D", "Device:D_TVS", "SMCJ40CA", SMC, {"1": "VBAT_F", "2": "GND"},
      "Littelfuse SMCJ40CA",
      "40V standoff / 64.5V clamp @ 1500W, bidirectional: absorbs ISO 7637-2 "
      "pulse 5b load dump and the negative pulses, ahead of the FET. 40V not "
-     "33V so the part stands off the declared 36V input top")
+     "33V so the part stands off the declared 36V input top", lcsc="C80273")
 C(pw, "100uF 100V", "+VBAT", "GND", fp="Capacitor_SMD:CP_Elec_10x10.5",
   mpn="Nichicon UCD2A101MNL1GS", polarized=True,
   note="Bulk hold-up; any 100uF >=80V SMD electrolytic on a 10x10.5 land "
@@ -650,7 +650,7 @@ R(pw, "31.6k", "FB_5V", "GND", note="FB lower")
 # ESR ripple for the COT comparator, so a SW-node RC ramp is AC-coupled into
 # FB. Sized for ~20mV at FB with VIN = 14V nominal, per TI's design example.
 R(pw, "121k", "SW_5V", "RAMP_5V", note="Ripple-injection ramp resistor RA")
-C(pw, "3.3nF 50V", "RAMP_5V", "+5V", note="Ramp capacitor CA")
+C(pw, "2.2nF 50V", "RAMP_5V", "+5V", note="Ramp capacitor CA. 2.2nF, not 3.3nF: at 8 V in the injected ramp was 10.6 mV against the ~15 mV COT floor; the smaller CA buys x1.5")
 C(pw, "270pF 50V", "RAMP_5V", "FB_5V", note="Ramp coupling capacitor CB")
 C(pw, "22uF 16V", "+5V", "GND", fp=C1206)
 C(pw, "22uF 16V", "+5V", "GND", fp=C1206)
@@ -685,7 +685,7 @@ part(pw, "L", "Device:L", "22uH", "Inductor_SMD:L_Sunlord_SWPA8040S",
 R(pw, "100k", "+3V3", "FB_3V3", note="FB upper: 1.2V ref -> 3.28V")
 R(pw, "57.6k", "FB_3V3", "GND", note="FB lower")
 R(pw, "95.3k", "SW_3V3", "RAMP_3V3", note="Ripple-injection ramp resistor RA")
-C(pw, "3.3nF 50V", "RAMP_3V3", "+3V3", note="Ramp capacitor CA")
+C(pw, "2.2nF 50V", "RAMP_3V3", "+3V3", note="Ramp capacitor CA, sized as on the 5 V rail for ramp amplitude at low battery")
 C(pw, "270pF 50V", "RAMP_3V3", "FB_3V3", note="Ramp coupling capacitor CB")
 C(pw, "22uF 16V", "+3V3", "GND", fp=C1206)
 C(pw, "22uF 16V", "+3V3", "GND", fp=C1206)
@@ -695,7 +695,7 @@ part(pw, "D", "Device:D_Zener", "3.6V 300mW", "Diode_SMD:D_SOD-323",
      {"1": "+3V3", "2": "GND"}, "onsemi MM3Z3V6T1G",
      "Rail clamp: an analog input shorted to battery back-feeds ~1.6mA "
      "through its BAT54S into +3V3; with the MCU asleep the rail would "
-     "otherwise float above the ESP32's 3.6V absolute maximum")
+     "otherwise float above the ESP32's 3.6V absolute maximum", lcsc="C116949")
 
 # 5V sensor excitation, fused separately from the board 5V
 part(pw, "PF", "Device:Polyfuse", "0.2A PTC", "Resistor_SMD:R_1206_3216Metric",
@@ -711,7 +711,7 @@ part(pw, "TP", "Connector:TestPoint", "PG_3V3", TP, {"1": "PG_3V3"})
 part(pw, "D", "Device:D_Zener", "SMAJ6.0A", SMA, {"1": "+5VS", "2": "GND"},
      "Littelfuse SMAJ6.0A",
      "Clamps harness-injected transients on the sensor 5V. 6.0V standoff, "
-     "not 5.0V: a 5.0V part on a 5.0V rail leaks up to 800uA continuously")
+     "not 5.0V: a 5.0V part on a 5.0V rail leaks up to 800uA continuously", lcsc="C223993")
 
 part(pw, "D", "Device:LED", "green", LED0805, {"1": "PWR_LED_K", "2": "+3V3"},
      note="The board's only LED: +3V3 is up, so the whole supply chain came "
@@ -940,7 +940,7 @@ R(sd, "100k", "+3V3", "SD_PG", note="Default off")
 part(sd, "Q", "Device:Q_NMOS_GSD", "2N7002", SOT23,
      {"1": "SD_EN_G", "2": "GND", "3": "SD_PG"}, "2N7002",
      "Level shift for the P-ch gate. Prefer an AEC-Q101 equivalent: the "
-     "standard 2N7002 is not automotive qualified")
+     "standard 2N7002 is not automotive qualified", lcsc="C8545")
 R(sd, "1k", "SD_PWR_EN", "SD_EN_G",
   note="Series gate resistor. 10k here divided against R27 100k and left "
        "only 0.24V over the 2N7002 cold-end threshold")
@@ -982,9 +982,9 @@ R(cn, "60.4", "TERM_A", "CAN_SPLIT", note="Split termination upper half")
 R(cn, "60.4", "CAN_SPLIT", "CAN_L", note="Split termination lower half")
 C(cn, "4.7nF 50V", "CAN_SPLIT", "GND", note="Split-termination common-mode stabiliser")
 part(cn, "D", "Device:D_TVS", "SMAJ26CA", SMA, {"1": "CAN_H", "2": "GND"},
-     "Littelfuse SMAJ26CA", "Bidirectional bus clamp")
+     "Diodes Inc SMAJ26CA-13-F", "Bidirectional bus clamp", lcsc="C134976")
 part(cn, "D", "Device:D_TVS", "SMAJ26CA", SMA, {"1": "CAN_L", "2": "GND"},
-     "Littelfuse SMAJ26CA")
+     "Diodes Inc SMAJ26CA-13-F", lcsc="C134976")
 part(cn, "TP", "Connector:TestPoint", "CAN_H", TP, {"1": "CAN_H"})
 part(cn, "TP", "Connector:TestPoint", "CAN_L", TP, {"1": "CAN_L"})
 
@@ -1008,7 +1008,7 @@ for n in range(1, 5):
     # which a lower standoff part would sit in conduction on until it failed.
     part(an, "D", "Device:D_TVS", "SMAJ40CA", SMA, {"1": inp, "2": "GND"},
          "Littelfuse SMAJ40CA",
-         "Ch%d harness transient clamp (bidirectional, 400W)" % n)
+         "Ch%d harness transient clamp (bidirectional, 400W)" % n, lcsc="C223989")
     R(an, "1k 0.1%", inp, node,
       note="Ch%d series/fault-current limit; 0.1%% thin film -- it is inside "
            "the divider chain, so its tolerance is a gain error" % n)
@@ -1033,8 +1033,8 @@ for n in range(1, 5):
     # One SOT-23 series pair: GND -> signal -> +3V3, so the node is clamped a
     # Schottky drop either side of the rails.
     part(an, "D", "Device:D_Schottky_Dual_Series_AKC", "BAT54S", SOT23,
-         {"1": "GND", "3": out, "2": "+3V3"}, "BAT54S",
-         "Ch%d rail clamp (both polarities)" % n)
+         {"1": "GND", "3": out, "2": "+3V3"}, "MDD BAT54S",
+         "Ch%d rail clamp (both polarities)" % n, lcsc="C408389")
 
 # Precision path for the four channels: the ESP32-S3 ADC is only good for
 # ±1-2% even calibrated, which is ±0.2 AFR on a 0-5V wideband output. The
@@ -1058,7 +1058,7 @@ R(an, "8.2k", "VBAT_SNS", "GND",
        "the top of the declared input window")
 C(an, "100nF 16V", "VBAT_SNS", "GND")
 part(an, "D", "Device:D_Schottky_Dual_Series_AKC", "BAT54S", SOT23,
-     {"1": "GND", "3": "VBAT_SNS", "2": "+3V3"}, "BAT54S", "Battery-monitor clamp")
+     {"1": "GND", "3": "VBAT_SNS", "2": "+3V3"}, "MDD BAT54S", "Battery-monitor clamp", lcsc="C408389")
 
 
 # --------------------------------------------------------------------------

@@ -5,7 +5,7 @@ source of truth and every `.kicad_sch` / `.kicad_pcb` / `fab/` / `plots/`
 file is a build artifact. Nothing is ever hand-edited in KiCad — if it were,
 the next regeneration would silently discard it. This file documents how the
 pipeline works and, more importantly, the rules that were learned the hard
-way, so the next board can reuse all of it.
+way, so the next boards can reuse all of it. The intended flow for a new design is at the bottom of this file.
 
 ## The one-command loops
 
@@ -40,7 +40,9 @@ python gen/export_plots.py        # schematic.pdf + three board renders
 | `tidy_silk.py` | reference designator declutter; touches no copper |
 | `validate.py` | compares KiCad's own netlist node-for-node against `netlist.txt`, runs ERC |
 | `audit_pcb.py` | current capacity, antenna keepout, decoupling distance, thermal, drill overlaps |
-| `simulate.py` | eight ngspice/numpy studies of the circuits themselves |
+| `simulate.py` | ten ngspice/numpy studies of the circuits themselves |
+| `audit_routes.py` | post-route extraction: IR drop over the real copper, bus lengths/skew, SW-node area |
+| `audit_straps.py` | every ESP32 strapping pin's state at reset vs what the netlist hangs on it |
 | `overstress.py` | closed-form worst-case for every external input |
 
 ## Design rules the pipeline enforces mechanically
@@ -102,11 +104,50 @@ point, 12.70 is; off-grid ends throw ERC "off connection grid" warnings.
 - Value text is placed above/below the body; leave a grid step of air
   between parallel runs or the text lands on the neighbouring wire.
 
+**Label and text readability** (learned by zooming into ugly sheets):
+
+- Every private net still needs exactly **one label for its name** — delete
+  them all and KiCad silently renames the net `Net-(R5-Pad2)`, which breaks
+  name-based netlist comparison and the schematic/board net linkage. But
+  the label does not have to sit on the circuit: put it on a **short
+  vertical spur** (one wire, one junction) rising into open sheet, angle 90.
+- Labels at wire ends must extend **away** from the circuit: angle 180 on a
+  left-pointing stub, 0 on a right-pointing one. A label anchored at a left
+  stub-end with angle 0 prints its text right across the part it feeds.
+- Part pitch on a shared run: **>= 10-12 mm** between centres, more when a
+  value is long. Budget a full symbol's width between one part's text and
+  the next part's body.
+- Every pin that gets an auto GND/power symbol needs **~10 mm of empty
+  sheet** beyond it for the symbol body plus its text.
+- To actually judge a sheet, render it: `kicad-cli sch export svg`, then a
+  headless browser screenshot (`msedge --headless --screenshot=... file:///
+  ...svg`), and zoom in. Text collisions are invisible at full-page scale
+  and glaring at reading scale — review at the scale a reader uses.
+
 **Never put a control character in any emitted string.** A literal newline
 inside a symbol property is accepted by KiCad's loader and then silently
 breaks connectivity for every symbol after it in the file — the netlist
 drops them with no error pointing anywhere near the cause. The emitter now
 flattens all whitespace in properties; keep it that way.
+
+## Build discipline (how a night of rebuilds went wrong)
+
+- **One build at a time, ever.** The `.build_board.lock` exists for this;
+  never put `rm -f .build_board.lock` inside a launch command "to be safe" —
+  that is how two autorouters ended up writing the same board file.
+- Stopping a build's shell does **not** stop freerouting: the java process
+  survives and keeps routing a board that no longer exists. Kill java
+  explicitly (`taskkill /F /IM java.exe`) after aborting a build.
+- Always launch the driver with `python -u`. Block-buffered stdout means an
+  empty log for ten minutes, which is indistinguishable from a hang and has
+  caused healthy builds to be killed.
+- A placement zone must have **more rect area than the sum of its parts'
+  courtyards** (SOT-23 ~12 mm2, 0805 ~7 mm2, plus ~30 % packing loss). The
+  shelf packer does not fail when a zone is too small -- it silently spills
+  parts onto whatever is below. Watch the post-placement DRC line (the
+  early tie stage prints it) instead of waiting ten minutes for routing.
+- freerouting runs at below-normal priority (set in build_board.py) so a
+  build does not take the machine down with it.
 
 ## Verification ladder
 
