@@ -1101,14 +1101,23 @@ def sim_tolerance(plots):
     # Ride-through window at the bad corner: electrolytics are -20/+20%,
     # the load estimate is soft, and the window must still cover a flush.
     c_bank = (100e-6 * (1 + rng.uniform(-0.2, 0.2, N))
-              + 2 * 220e-6 * (1 + rng.uniform(-0.2, 0.2, N)))
+              + 2 * 330e-6 * (1 + rng.uniform(-0.2, 0.2, N)))
     p_load = 0.35 * (1 + rng.uniform(-0.2, 0.4, N))
+    # Deliberately the flat-battery case, and NOT the same question study 4
+    # answers. Study 4 opens the ignition on a healthy 13.5 V battery, and
+    # +VBAT starts its coast from there -- Q1 isolates it from the harness, so
+    # the warning arrives before any stored energy has been spent. Here the
+    # harness is already down at the trip point when the key turns, so the
+    # bank starts at 10.7 V instead of 13.5 V. Energy goes as V^2, so that
+    # alone is 1.9x less usable charge before the tolerance spread is applied.
+    # Both numbers are real; they bound opposite ends of the same event.
     v0 = 11.0 - 0.3                       # detect, less hysteresis band
     window = c_bank * (v0 ** 2 - 6.0 ** 2) / (2 * p_load)
     lo = float(np.percentile(window, 0.1))
-    print("    ride-through     : %4.0f ms median, %4.0f ms at the 0.1%% "
+    print("    ride-through, flat battery (bank starts at %.1f V, not 13.5):\n"
+          "                     : %4.0f ms median, %4.0f ms at the 0.1%% "
           "corner (caps -20%%, load +40%%)"
-          % (float(np.median(window)) * 1e3, lo * 1e3))
+          % (v0, float(np.median(window)) * 1e3, lo * 1e3))
     # The gate is the healthy-card flush (~10-30 ms). Covering a stalled
     # card was never in reach even at nominal (55 ms median) -- that risk
     # class is handled by firmware flushing often, per the README.

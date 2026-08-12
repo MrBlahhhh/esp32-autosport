@@ -102,13 +102,13 @@ static Board make_autosport() {
   b.has_pwr_fail = true;
   b.pwr_fail_trip = 11.0;        // README section 2
   b.pwr_fail_hyst = 0.3;
-  // Scaled from the 540 uF ngspice result (108 / 53 ms) for the 760 uF bank
-  // that replaced it: the load is constant-power over a fixed voltage window,
-  // so the hold-up time is linear in C. Re-run gen/simulate.py to replace
-  // these with measured values -- ngspice was not installed when the bank
-  // changed, so nothing here has been through the circuit simulator yet.
-  b.ridethru_shed_ms = 152.0;    // was 108 at 540 uF
-  b.ridethru_noshed_ms = 75.0;   // was 53 at 540 uF
+  // Measured by gen/simulate.py study 4 on the 760 uF bank, ignition opened
+  // on a healthy 13.5 V battery. Note this is the *nominal* window: study 8's
+  // Monte Carlo runs the same event with the harness already down at the trip
+  // point (a flat battery) and worst-case tolerances, and gets 51 ms. Anything
+  // this simulator concludes about flush margin is a nominal-case claim.
+  b.ridethru_shed_ms = 154.4;    // sim/ridethru_shed.dat
+  b.ridethru_noshed_ms = 74.7;   // sim/ridethru_noshed.dat
   return b;
 }
 

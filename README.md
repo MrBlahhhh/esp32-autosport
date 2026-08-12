@@ -64,7 +64,7 @@ be a small prototype run.**
 | | |
 |---|---|
 | MCU | ESP32-S3-WROOM-1-N16R8 (16 MB flash, 8 MB octal PSRAM) |
-| Supply input | 6–36 V continuous, reverse-protected to −65 V, transients clamped at 64.5 V, ~152 ms power-cut ride-through |
+| Supply input | 6–36 V continuous, reverse-protected to −65 V, transients clamped at 64.5 V, 154 ms power-cut ride-through (51 ms worst-case on a flat battery) |
 | CAN | 1× CAN 2.0B, TJA1051T/3, ESP32-S3 TWAI controller, split termination, **off by default** |
 | Storage | microSD, 4-bit SDMMC, switchable card supply |
 | Analog in | 4 channels, solder-jumper divider, **0–5 V by default** (0–3.3 V / 0–16 V by jumper) + optional pull-up bias, shared by the ESP32 ADC and a 16-bit ADS1115 |
@@ -172,12 +172,16 @@ every single drive. The chain that makes that survivable:
    reset — the rail comes up only when firmware asks.
 
 Simulated end to end (§10, `sim/ridethru.png`): detection in under 1 ms, and
-from `PWR_FAIL` to the converters dropping out is **~152 ms with the sensor
-rail shed, ~75 ms without**. Those two are scaled from the measured 540 µF
-result (108 / 53 ms) for the 760 µF bank that replaced it — hold-up is linear
-in C for a constant-power load over a fixed window. **Re-run
-`gen/simulate.py` to replace them with measured values**; ngspice was not
-installed when the bank changed.
+from `PWR_FAIL` to the converters dropping out is **154 ms with the sensor
+rail shed, 75 ms without** — both measured on the 760 µF bank.
+
+That is the *healthy-battery* case: the ignition opens at 13.5 V and `+VBAT`
+starts its coast from there, because `Q1` isolates it from the harness. Open
+the ignition on a battery already down at the trip point and the bank starts
+at 10.7 V instead — energy goes as V², so that alone is 1.9× less charge. The
+Monte Carlo puts that flat-battery corner at **78 ms median, 51 ms at 0.1 %**
+with worst-case tolerances (§10). Both are real; they bound opposite ends of
+the same event, and firmware should be sized against the 51 ms.
 
 **Firmware contract:** on `PWR_FAIL` rising — drop `SENS_EN`, stop sampling,
 flush and close the file, then idle. Do not start a new write while
@@ -187,7 +191,9 @@ firmware's job.
 The firmware that spends it now exists and has been run against that window
 (§10, *Firmware in the loop*). Measured: the file is closed **31 ms** after
 `PWR_FAIL`, leaving 121 ms of the bank unspent, and the card may take up to a
-**~130 ms** flush before the close no longer fits. That is roughly seven times a
+**~130 ms** flush before the close no longer fits — though that, too, is
+against the nominal window; on the flat-battery corner the budget is 51 ms and
+only a healthy card fits. That is roughly seven times a
 healthy card's latency but it is a limit, not unlimited protection — a card
 that stalls for longer than that still loses the file.
 
@@ -799,9 +805,9 @@ and the ferrite swallow them and the TVS absorbs a measured 0 J.
 **Second-round studies** (also in `gen/simulate.py`):
 
 - **Battery-connect inrush**: the 760 µF bank charges through Q1's body diode
-  before the LM74700 wakes — 42 A peak, and 0.28 A²s of surge (0.20 A²s
-  measured at 540 µF, scaled: the fuse's I²t burden is linear in C, which is
-  the price of the bigger bank). A 2 A nano fuse is specified around 1 A²s; verify the exact
+  before the LM74700 wakes — **44.0 A peak, 0.274 A²s** of surge and 11.7 mJ
+  in the diode over 0.80 ms. The fuse's I²t burden is linear in C, so this is
+  the price of the bigger bank: it was 0.20 A²s at 540 µF. A 2 A nano fuse is specified around 1 A²s; verify the exact
   figure on the datasheet at order, but the margin is ~3.6×.
 - **Engine crank (ISO 16750-2 profile)**: warm (6.0 V dip) and cold (4.5 V
   dip, 15 ms) both ride through — the bank carries the bottom of the dip and
@@ -812,6 +818,10 @@ and the ferrite swallow them and the TVS absorbs a measured 0 J.
   10.72–11.29 V at 99.8 %; the 0.1 % analog divider stack holds gain error
   to ±0.08 %; +5 V spans 4.85–5.15 V and +3V3 spans 3.19–3.38 V worst-case;
   the battery monitor's 1 % divider is ±1.9 % — calibrate it in firmware.
+  Ride-through on a **flat battery** (bank starting at the 10.7 V trip point
+  rather than 13.5 V) is 78 ms median and **51 ms at the 0.1 % corner** with
+  caps −20 % and load +40 %. That is the number firmware has to fit inside,
+  not the 154 ms of §2 — which assumes a healthy battery.
 
 **What it does not cover.** The LM5164's control loop. It is a constant-on-time
 part with an encrypted TI model, so the buck deck drives the power stage at an
