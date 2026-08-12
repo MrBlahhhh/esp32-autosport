@@ -49,14 +49,14 @@ Qty (1 board),Qty (10 boards),References,Value,Voltage,Tolerance,Footprint,Manuf
 1,10,JP8,PULLUP3,,,Jumper:SolderJumper-2_P1.3mm_Open_Pad1.0x1.5mm,,,Close for 2-wire NTC / open-collector sensors
 1,10,JP9,BYPASS3,,,Jumper:SolderJumper-2_P1.3mm_Open_Pad1.0x1.5mm,,,Close for a raw 0-3.3V sensor (shorts the upper leg)
 1,10,L1,33uH,,,Inductor_SMD:L_Sunlord_SWPA8040S,Sunlord ASWPA8050S330MT,C340244,"Shielded molded, Isat 3A vs the 1.75A max peak limit"
-1,10,L2,22uH,,,Inductor_SMD:L_Sunlord_SWPA8040S,Sunlord ASWPA8050S220MT,,Same automotive series as L1
+1,10,L2,22uH,,,Inductor_SMD:L_Sunlord_SWPA8040S,Sunlord ASWPA8050S220MT,C340243,"Same automotive series as L1. C340243 verified against the live JLC catalogue 2026-08-12: 22uH, 3A Isat, 8x8mm -- one part number below L1's C340244, which is the 33uH of the same series"
 1,10,L3,51uH,,,esp32autosport:L_CommonMode_TDK_ACT45B,TDK ACT45B-510-2P-TL003,C76584,AEC-Q200 CAN choke; footprint pads renumbered so symbol winding 1-2 is the package's top (1-4) winding
 1,10,PF1,0.2A PTC,,,Resistor_SMD:R_1206_3216Metric,Bourns MF-MSMF020,,"Resettable: a shorted sensor wire trips this, not the board. Now behind the load switch, so a short is also something firmware can clear by dropping SENS_EN, rather than waiting for the fuse to cool"
 2,20,PF2 PF3,0.5A hold,,,Resistor_SMD:R_1206_3216Metric,Bourns MF-MSMF050,,
 1,10,Q1,IPD068N10,,,Package_TO_SOT_SMD:TO-252-3_TabPin2,Infineon IPD068N10N3G,C88066,"Source to battery, drain to load: body diode blocks reverse polarity. The previously specified PSMN4R3-100BSE does not exist"
 2,20,Q2 Q4,AO3401A,,,Package_TO_SOT_SMD:SOT-23,Alpha & Omega AO3401A,C15127,"Sensor-rail load switch. Source to +5V, so the body diode points into the rail and the switch blocks with the gate high"
 1,10,Q3,2N7002,,,Package_TO_SOT_SMD:SOT-23,onsemi 2N7002,C8545,"Level shifter: the P-FET's gate has to be pulled to GND from 5V, and a 3.3V GPIO cannot do that directly"
-1,10,Q5,MMBT3906,,,Package_TO_SOT_SMD:SOT-23,onsemi MMBT3906,C8544,Pulls the P-FET gate to its source on overvoltage
+1,10,Q5,MMBT3906,,,Package_TO_SOT_SMD:SOT-23,ST(Semtech) MMBT3906,C84105,"Pulls the P-FET gate to its source on overvoltage. NOTE: this was C8544 until 2026-08-12, which is an S9018 -- an NPN, and not this part at all. Ordering it would have assembled the wrong polarity into the USB over-voltage cutoff and left the protection inoperative. Verified against the live catalogue: C84105 is an ST(Semtech) MMBT3906, PNP, SOT-23, 40 V"
 1,10,Q6,DMG2301L,,,Package_TO_SOT_SMD:SOT-23,DMG2301L,,High-side switch so firmware can power-cycle a wedged card
 1,10,Q7,2N7002,,,Package_TO_SOT_SMD:SOT-23,2N7002,C8545,Level shift for the P-ch gate. Prefer an AEC-Q101 equivalent: the standard 2N7002 is not automotive qualified
 13,130,R1 R10 R12 R15 R16 R18 R21 R27 R39 R41 R7 R77 R9,100k,,,Resistor_SMD:R_0805_2012Metric,,,UVLO upper leg
@@ -95,4 +95,4 @@ Qty (1 board),Qty (10 boards),References,Value,Voltage,Tolerance,Footprint,Manuf
 1,10,U4,LM5164 (3V3),,,Package_SO:SOIC-8-1EP_3.9x4.9mm_P1.27mm_EP2.95x4.9mm_Mask2.71x3.4mm_ThermalVias,LM5164DDAR,C477928,Second buck straight off the battery: a shorted 5V sensor harness cannot brown out the MCU
 1,10,U5,ESP32-S3-WROOM-1-N16R8,,,RF_Module:ESP32-S3-WROOM-1,ESP32-S3-WROOM-1-N16R8,C2913202,16MB flash / 8MB octal PSRAM. Pins 28-30 (IO35/36/37) are consumed by the octal PSRAM and must stay unconnected. IO3/IO45/IO46 on the spare header are strapping pins -- leave floating at boot.
 2,20,U7 U8,USBLC6-2SC6,,,Package_TO_SOT_SMD:SOT-23-6,USBLC6-2SC6,C7519,"USB ESD clamp, behind the OVP switch so its own 5.5 V VBUS-pin limit is honoured too"
-1,10,U9,74AHCT1G125,,,Package_TO_SOT_SMD:SOT-23-5,SN74AHCT1G125DBVR,,"5 V buffer so WS2812 DIN is a real 5 V rail, not 3.3 V hoping"
+1,10,U9,74AHCT1G125,,,Package_TO_SOT_SMD:SOT-23-5,SN74AHCT1G125DBVR,C7484,"5 V buffer so WS2812 DIN is a real 5 V rail, not 3.3 V hoping"

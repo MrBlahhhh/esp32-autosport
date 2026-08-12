@@ -89,13 +89,43 @@ def through_hole_refs():
     an actual WS2812 LED to the header named WS2812. Cleaner to drop them
     from both files, consistently, so the two still agree.
     """
-    try:
-        import pcbnew
-    except ImportError:
-        return set()
+    # This used to `return set()` when pcbnew was missing, which meant running
+    # under the system Python produced fab files that looked perfect -- BOM and
+    # CPL still agreed, designator counts still matched -- and quietly asked
+    # JLC to assemble all eight through-hole connectors. Silence is the wrong
+    # failure here: the files are only wrong at the point somebody is spending
+    # money. main() now re-execs under KiCad's Python, so this is unreachable;
+    # if it ever is reached, say so instead of shipping a bad BOM.
+    import pcbnew
     board = pcbnew.LoadBoard(BOARD)
     return {fp.GetReference() for fp in board.GetFootprints()
             if fp.GetAttributes() & pcbnew.FP_THROUGH_HOLE}
+
+
+def reexec_under_kicad_python():
+    """pcbnew only exists inside KiCad's interpreter. Rather than ask the
+    caller to remember that, find it and hand the script over."""
+    try:
+        import pcbnew  # noqa: F401
+        return
+    except ImportError:
+        pass
+    for pat in (r"C:\Program Files\KiCad\*\bin\python.exe",
+                "/Applications/KiCad/KiCad.app/Contents/Frameworks/"
+                "Python.framework/Versions/*/bin/python3",
+                "/usr/bin/python3"):
+        hits = sorted(glob.glob(pat))
+        if hits and os.path.abspath(hits[-1]) != os.path.abspath(sys.executable):
+            print("re-running under KiCad's Python: %s" % hits[-1])
+            # subprocess, not os.execv: on Windows execv flattens argv into a
+            # command line and the space in "C:\Program Files" splits it.
+            sys.exit(subprocess.run(
+                [hits[-1], os.path.abspath(__file__)] + sys.argv[1:]).returncode)
+    raise SystemExit(
+        "export_fab.py needs KiCad's Python (pcbnew) to know which parts are\n"
+        "through-hole. Without it the fab files would silently include the\n"
+        "eight hand-soldered connectors. Run it with, e.g.:\n"
+        '  "C:\\Program Files\\KiCad\\9.0\\bin\\python.exe" gen/export_fab.py')
 
 
 def positions():
@@ -192,6 +222,7 @@ def bom():
 
 
 def main():
+    reexec_under_kicad_python()
     global CLI
     CLI = find_cli()
     os.makedirs(FAB, exist_ok=True)

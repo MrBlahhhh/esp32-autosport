@@ -95,6 +95,92 @@ def load_netlist():
     return designators, nets
 
 
+def measure():
+    """Every number the README quotes, recomputed from the artefacts."""
+    m = {}
+    pcb = open(os.path.join(PROJ, "esp32s3-can-sd-logger.kicad_pcb"), encoding="utf-8").read()
+    m["tracks"] = len(re.findall(r"\n\t\(segment", pcb))
+    m["vias"] = len(re.findall(r"\n\t\(via", pcb))
+    m["footprints"] = pcb.count("(footprint ")
+    m["nets"] = len(set(re.findall(r'\(net \d+ "([^"]*)"', pcb)))
+    pts = []
+    for blk in re.finditer(r"\(gr_(?:line|rect|arc)(.*?)\(layer \"Edge\.Cuts\"\)", pcb, re.S):
+        pts += [(float(x), float(y)) for x, y in
+                re.findall(r"\((?:start|end|mid|xy) ([-\d.]+) ([-\d.]+)\)", blk.group(1))]
+    if pts:
+        m["board_x"] = round(max(p[0] for p in pts) - min(p[0] for p in pts))
+        m["board_y"] = round(max(p[1] for p in pts) - min(p[1] for p in pts))
+
+    rows = list(csv.DictReader(open(os.path.join(PROJ, "bom.csv"), encoding="utf-8")))
+    m["bom_lines"] = len(rows)
+    m["instances"] = sum(len(r["References"].split()) for r in rows)
+
+    fb = list(csv.DictReader(open(os.path.join(PROJ, "fab", "bom.csv"), encoding="utf-8")))
+    m["fab_lines"] = len(fb)
+    m["fab_with_pn"] = sum(1 for r in fb if r["JLCPCB Part #"].strip())
+    blank = [r for r in fb if not r["JLCPCB Part #"].strip()]
+    gen = [r for r in blank
+           if re.search(r"_(0402|0603|0805|1206|1210)_", r["Footprint"])
+           and re.match(r"^[\d.]", r["Comment"])]
+    m["fab_generic"] = len(gen)
+    m["fab_handmatch"] = len(blank) - len(gen)
+    m["fab_unpicked"] = len(blank)
+    d = set()
+    for r in fb:
+        d |= {x.strip() for x in r["Designator"].split(",") if x.strip()}
+    m["fab_designators"] = len(d)
+    cpl = {r["Designator"].strip() for r in
+           csv.DictReader(open(os.path.join(PROJ, "fab", "positions.csv"), encoding="utf-8"))}
+    m["cpl_designators"] = len(cpl)
+    m["bom_cpl_agree"] = (d == cpl)
+    return m
+
+
+# Each entry: label, regex over README.md (one capture group per key), keys.
+# Prose is not machine-readable, so the patterns are pinned by hand -- but the
+# *values* come from the artefacts, so the numbers can never quietly rot again.
+NUMBER_CLAIMS = [
+    ("routed board stats", r"— (\d+) tracks, (\d+) vias, (\d+) footprints, (\d+) nets",
+     ["tracks", "vias", "footprints", "nets"]),
+    ("board size (status)", r"is \*\*(\d+) x (\d+) mm\*\*", ["board_x", "board_y"]),
+    ("board size (§9)", r"(\d+) x (\d+) mm, 4 layers", ["board_x", "board_y"]),
+    ("board size (§11)", r"read (\d+) x (\d+) mm and 4 layers", ["board_x", "board_y"]),
+    ("parts row", r"\| Parts \| (\d+) component instances, (\d+) distinct BOM lines",
+     ["instances", "bom_lines"]),
+    ("fab designators (status)", r"list the same (\d+) designators", ["fab_designators"]),
+    ("fab designators (§11)", r"list the same \*\*(\d+)\s*\n?designators\*\*", ["fab_designators"]),
+    ("lines carrying a part number", r"agree\.\s*(\d+) lines\s*\ncarry", ["fab_with_pn"]),
+    ("SMT parts placed", r"JLC places all (\d+) surface-mount parts", ["fab_designators"]),
+    ("match-the-parts split",
+     r"\*\*(\d+)\*\* lines arrive with a part number and match\s*\nthemselves; the other \*\*(\d+)\*\*",
+     ["fab_with_pn", "fab_unpicked"]),
+]
+
+
+def check_numbers(failures):
+    m = measure()
+    text = open(os.path.join(PROJ, "README.md"), encoding="utf-8").read()
+    print("\nNumbers the README quotes, against the artefacts")
+    for label, pat, keys in NUMBER_CLAIMS:
+        hit = re.search(pat, text)
+        if not hit:
+            failures.append("%s: no line in README matches %r" % (label, pat))
+            print("  FAIL  %-30s pattern not found -- prose reworded?" % label)
+            continue
+        got = [int(g) for g in hit.groups()]
+        want = [m[k] for k in keys]
+        ok = got == want
+        if not ok:
+            failures.append("%s: README says %s, artefacts say %s" % (label, got, want))
+        print("  %-5s %-30s README %-22s actual %s"
+              % ("ok" if ok else "FAIL", label, got, want))
+    if not m["bom_cpl_agree"]:
+        failures.append("fab BOM and CPL designator sets differ")
+    print("  %-5s %-30s %d designators each"
+          % ("ok" if m["bom_cpl_agree"] else "FAIL", "fab BOM == CPL", m["fab_designators"]))
+    return m
+
+
 def main():
     values = load_bom()
     designators, nets = load_netlist()
@@ -123,6 +209,8 @@ def main():
             print("  FAIL  %s names `%s`, which is in neither netlist column" % (doc, tok))
     if not dangling:
         print("  ok    every designator named in the docs exists")
+
+    check_numbers(failures)
 
     print("\n%d checks failed" % len(failures))
     for f in failures:

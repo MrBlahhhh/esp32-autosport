@@ -692,7 +692,10 @@ C(pw, "2.2nF 50V", "BST_3V3", "SW_3V3",
   note="Bootstrap: datasheet-mandated 2.2nF X7R, do not increase")
 part(pw, "L", "Device:L", "22uH", "Inductor_SMD:L_Sunlord_SWPA8040S",
      {"1": "SW_3V3", "2": "+3V3"}, "Sunlord ASWPA8050S220MT",
-     "Same automotive series as L1")
+     "Same automotive series as L1. C340243 verified against the live JLC "
+     "catalogue 2026-08-12: 22uH, 3A Isat, 8x8mm -- one part number below "
+     "L1's C340244, which is the 33uH of the same series",
+     lcsc="C340243")
 R(pw, "100k", "+3V3", "FB_3V3", note="FB upper: 1.2V ref -> 3.28V")
 R(pw, "57.6k", "FB_3V3", "GND", note="FB lower")
 R(pw, "95.3k", "SW_3V3", "RAMP_3V3", note="Ripple-injection ramp resistor RA")
@@ -812,8 +815,13 @@ part(mc, "Q", "Device:Q_PMOS_GSD", "AO3401A", SOT23,
      "blocks toward the board when the switch is open", lcsc="C15127")
 R(mc, "100k", "VBUS_G", "GND", note="Switch on by default")
 part(mc, "Q", "Device:Q_PNP_BEC", "MMBT3906", SOT23,
-     {"1": "VBUS_OV", "2": "VBUS_R", "3": "VBUS_G"}, "onsemi MMBT3906",
-     "Pulls the P-FET gate to its source on overvoltage", lcsc="C8544")
+     {"1": "VBUS_OV", "2": "VBUS_R", "3": "VBUS_G"}, "ST(Semtech) MMBT3906",
+     "Pulls the P-FET gate to its source on overvoltage. NOTE: this was "
+     "C8544 until 2026-08-12, which is an S9018 -- an NPN, and not this part "
+     "at all. Ordering it would have assembled the wrong polarity into the "
+     "USB over-voltage cutoff and left the protection inoperative. Verified "
+     "against the live catalogue: C84105 is an ST(Semtech) MMBT3906, PNP, "
+     "SOT-23, 40 V", lcsc="C84105")
 R(mc, "10k", "VBUS_R", "VBUS_OV",
   note="Holds the PNP off while the TLV431 is not conducting")
 part(mc, "U", "Reference_Voltage:TL431DBZ", "TLV431A", SOT233,
@@ -870,11 +878,12 @@ R(mc, "33", "LED_DIN_MCU", "LED_DIN_A",
   note="Edge-rate limit into the level shifter")
 part(mc, "U", "74xGxx:74AHCT1G125", "74AHCT1G125", SOT235,
      {"1": "GND", "2": "LED_DIN_A", "3": "GND", "4": "LED_DIN", "5": "+5V"},
-     # NOT C7975 -- that is an LMV324IPWRG4 quad op-amp in TSSOP-14. JLC
-     # resolved our part number to it and warned that the footprint did
-     # not match SOT-23-5, which is how the error surfaced. Left blank so
-     # the matcher works from the MPN; fill it in once verified.
-     "SN74AHCT1G125DBVR", lcsc="",
+     # NOT C7975 -- that is an LMV324IPWRG4 quad op-amp in TSSOP-14, and out
+     # of stock besides. JLC resolved our part number to it and warned that
+     # the footprint did not match SOT-23-5, which is how the error surfaced.
+     # C7484 verified against the live JLC catalogue 2026-08-12: TI
+     # SN74AHCT1G125DBVR, SOT-23-5, extended.
+     "SN74AHCT1G125DBVR", lcsc="C7484",
      note="5 V buffer so WS2812 DIN is a real 5 V rail, not 3.3 V hoping")
 C(mc, "100nF 16V", "+5V", "GND", note="AHCT decoupling")
 R(mc, "100", "LED_DIN", "LED_DIN_J",

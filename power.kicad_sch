@@ -7148,7 +7148,7 @@
     (property "MPN" "Sunlord ASWPA8050S220MT" (at 240.03 150.62 270)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "Note" "Same automotive series as L1" (at 240.03 150.62 270)
+    (property "Note" "Same automotive series as L1. C340243 verified against the live JLC catalogue 2026-08-12: 22uH, 3A Isat, 8x8mm -- one part number below L1's C340244, which is the 33uH of the same series" (at 240.03 150.62 270)
       (effects (font (size 1.27 1.27)) hide)
     )
     (pin "1" (uuid 4129b035-2e1a-541d-92b0-dd2ff2b90a66))

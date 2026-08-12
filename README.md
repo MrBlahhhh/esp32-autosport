@@ -1,4 +1,4 @@
-# ESP32-S3 CAN + microSD Automotive Logger — Rev A
+# ESP32-S3 CAN + microSD Automotive Logger — Rev B
 
 ## TL;DR
 
@@ -47,7 +47,7 @@ the common case is plugging into a vehicle bus that is already terminated.
 
 **Status: Rev B, fully routed.** Schematic is ERC-clean on KiCad 9.0. The PCB
 is **84 x 100 mm**, 4-layer, **fully placed and routed with zero DRC errors and
-nothing unconnected** — 1660 tracks, 296 vias, 206 footprints, 115 nets. Rev B
+nothing unconnected** — 1731 tracks, 323 vias, 206 footprints, 115 nets. Rev B
 carries the fixes from an external datasheet review (§7): the LM74700 enable
 divider, the ANODE capacitor, two TVS standoff corrections, transient clamps
 on the analog harness inputs, and a dozen smaller items. `fab/` holds the
@@ -70,7 +70,7 @@ be a small prototype run.**
 | Analog in | 4 channels, solder-jumper divider, **0–5 V by default** (0–3.3 V / 0–16 V by jumper) + optional pull-up bias, shared by the ESP32 ADC and a 16-bit ADS1115 |
 | Extras | Battery voltage monitor, USB-C (native USB), I²C/Qwiic, UART0, SPI breakout, WS2812 5 V DIN header, 6-pin spare-IO header |
 | Rails | +5 V @ 1 A, +3V3 @ 1 A, +5 V sensor excitation (separately fused) |
-| Parts | 195 component instances, 98 distinct BOM lines, all surface-mount except 8 through-hole connectors |
+| Parts | 195 component instances, 97 distinct BOM lines, all surface-mount except 8 through-hole connectors |
 
 ---
 
@@ -502,24 +502,40 @@ Found later, during the pin audit (§6), and worth knowing rather than fixing:
 
 ### Sourcing (JLCPCB assembly)
 
-The board is targeted at JLCPCB pick-and-place, so the critical semiconductors
-were checked against the LCSC catalog (2026-08):
+**Every part number in `fab/bom.csv` was re-checked against the live LCSC and
+JLCPCB catalogues on 2026-08-12** — all 23, one at a time, confirming the MPN,
+the package and that the part exists. Two were wrong:
 
-| Part | MPN | LCSC # | Notes |
+| Was | Resolved to | Should be |
+|---|---|---|
+| `C8544` for `Q5` MMBT3906 | **S9018, an NPN** from JSCJ | `C84105` — ST(Semtech) MMBT3906, PNP, SOT-23 |
+| `C7975` for `U9` SN74AHCT1G125DBVR | **LMV324IPWRG4**, a quad op-amp in TSSOP-14, out of stock | `C7484` — TI SN74AHCT1G125DBVR, SOT-23-5 |
+
+The `Q5` one was live in the BOM and would have assembled an NPN where the USB
+over-voltage cutoff needs a PNP — protection that silently does not work. The
+`U9` one was only ever in this table; the generator already carried a comment
+saying `C7975` was wrong and left the field blank, and that fix never reached
+the prose. Both are corrected, and `L2`'s 22 µH inductor picked up a verified
+number (`C340243`) on the way past.
+
+The critical semiconductors, all confirmed present and in stock:
+
+| Part | MPN | JLC # | Notes |
 |---|---|---|---|
-| ESP32 module | ESP32-S3-WROOM-1-N16R8 | C2913202 | In stock |
+| ESP32 module | ESP32-S3-WROOM-1-N16R8 | C2913202 | 13 087 in stock |
 | Buck ×2 | LM5164DDAR | C477928 | Non-automotive variant — the Q1 is backordered at DigiKey and nearly dry at Mouser; same silicon, minus AEC-Q100 |
-| Ideal-diode ctrl | LM74700QDBVRQ1 | C2941042 | In stock (~$0.72) |
-| Reverse-batt FET | IPD068N10N3G | C88066 | Replaces PSMN4R3-100BSE, **which does not exist** (nearest real Nexperia part is a D2PAK); DPAK, drops into the same footprint, 6.8 mΩ costs ~3 mV at load |
-| CAN transceiver | TJA1051T/3 | C58988 | NXP original, in stock; the BOM carries the `,118` reel suffix |
-| Precision ADC | ADS1115IDGSR | C37593 | Non-automotive variant — the Q1 needs a manufacturer quote at DigiKey |
-| WS2812 buffer | SN74AHCT1G125DBVR | C7975 | 5 V DIN driver for the shift-light header |
+| Ideal-diode ctrl | LM74700QDBVRQ1 | C2941042 | SOT-23-6, 3 987 in stock |
+| Reverse-batt FET | IPD068N10N3G | C88066 | Replaces PSMN4R3-100BSE, **which does not exist** (nearest real Nexperia part is a D2PAK); TO-252, drops into the same footprint, 6.8 mΩ costs ~3 mV at load |
+| CAN transceiver | TJA1051T/3 | C58988 | NXP original, 11 085 in stock; the BOM carries the `,118` reel suffix |
+| Precision ADC | ADS1115IDGSR | C37593 | VSSOP-10, 24 565 in stock. Non-automotive variant — the Q1 needs a manufacturer quote at DigiKey |
+| WS2812 buffer | SN74AHCT1G125DBVR | **C7484** | TI, SOT-23-5. **Not C7975** |
+| USB OVP transistor | MMBT3906 | **C84105** | ST(Semtech), PNP. **Not C8544** |
+| Buck inductors | ASWPA8050S330MT / S220MT | C340244 / C340243 | Sunlord automotive series, 8×8 mm, 3 A Isat. JLCPCB-catalogue parts — the LCSC product page 404s, which is normal for JLC-only stock |
 
-Still to pick from the live JLC catalog at order time (generic, many options):
-the two buck inductors (33 µH / 22 µH shielded molded, ≥ 2 A Isat — Coilcraft
-XAL7030 is the reference part but LCSC stock is thin), the 100 µF 100 V bulk
-electrolytic (Nichicon UCD is the reference), and the 0.1 % thin-film divider
-resistors (commodity at LCSC).
+Nine lines still have no part number and are picked by hand at order time: the
+`330 µF`/`100 µF` 100 V electrolytics, the green LED, `PMEG4010`, both
+polyfuses, `DMG2301L`, the `TL3342` buttons, `TLV431ASN1T1G`. The 0.1 %
+thin-film divider resistors are commodity and auto-match on value + package.
 
 
 ---
@@ -557,6 +573,8 @@ resistors (commodity at LCSC).
 | `plots/board-routed.png` | Render of the finished board, top |
 | `plots/board-back.png` | Render of the finished board, bottom — routing only, no parts |
 | `fab/` | Gerbers, drill, JLC BOM and pick-and-place (generated) |
+| `docs/PREORDER.md` | Pre-order checklist: what is checked, what is not, what to do at upload |
+| `docs/BRINGUP.md` | Staged first-power checklist, tied to the study values |
 | `firmware/esp32_shiftlight_wideband/` | Firmware for this board: shift light, wideband BLE bridge, microSD logger |
 | `firmware/vendor/` | Verbatim copy of the R53 sketch — the control build, do not edit |
 | `gen/simulate_firmware.py` | Firmware-in-the-loop studies: runs the sketch and feeds it inputs |
@@ -637,7 +655,7 @@ python gen/build_board.py --freerouting freerouting.jar
 | 8 | `maze_route.py` | Rips up and re-routes whatever is still open |
 | 9 | `tidy_silk.py` | Shrinks and shuffles the reference designators |
 
-84 x 74 mm, 4 layers: **F.Cu / GND / +3V3 / B.Cu**, JLCPCB JLC04161H-7628
+84 x 100 mm, 4 layers: **F.Cu / GND / +3V3 / B.Cu**, JLCPCB JLC04161H-7628
 stackup, 0.2 mm minimum drill (the LM5164 thermal vias), 0.5 mm copper-to-edge
 enforced by a rule-area band around the perimeter.
 
@@ -909,6 +927,10 @@ prototype run priced for flying-probe does not buy anything from.
 
 ### Bring-up
 
+[`docs/PREORDER.md`](docs/PREORDER.md) is the checklist to work through
+**before** uploading `fab/` — what has been checked, what has not, and the
+handful of things only JLC's own DFM report can tell you.
+
 [`docs/BRINGUP.md`](docs/BRINGUP.md) is the staged first-power checklist —
 every step carries the expected value and points back at the simulation
 study that derived it. `fab/board.step` is the full 3D model for designing
@@ -917,13 +939,14 @@ the dash enclosure around.
 ### Ordering note: BOM part-number coverage
 
 `fab/bom.csv` is in JLCPCB's format (`Comment,Designator,Footprint,JLCPCB
-Part #`), and BOM/CPL designators are machine-verified to agree. 21 lines
-carry verified LCSC numbers; 39 blank lines are plain 0805/1206 R/C that
-JLC's order flow auto-matches from value + package. **Twelve extended lines
-must be matched by hand in the order UI** (search the Comment, pick the
-stocked equivalent): the 330 uF/100 V and 100 uF/100 V electrolytics, the
-green LED, PMEG4010, the 0466 2 A fuse, both Wurth beads, the Sunlord 22 uH,
-DMG2301L, the TL3342 buttons, TLV431ASN1T1G and SN74AHCT1G125. Never guess a
+Part #`), and BOM/CPL designators are machine-verified to agree. 23 lines
+carry LCSC numbers **checked against the live catalogue on 2026-08-12** (see
+below); 40 blank lines are plain 0805/1206 R/C that JLC's order flow
+auto-matches from value + package. **Nine extended lines must be matched by
+hand in the order UI** (search the Comment, pick the stocked equivalent): the
+330 uF/100 V and 100 uF/100 V electrolytics, the green LED, PMEG4010, the
+0466 2 A fuse, both polyfuses, DMG2301L, the TL3342 buttons and
+TLV431ASN1T1G. Never guess a
 C-number into the file -- a wrong part number assembles the wrong part.
 
 ## 11. Handoff — remaining work
@@ -940,7 +963,7 @@ that varies between runs is the autorouter's solution for the signals, and
 stage 8 closes out whatever it leaves.
 
 The 105 remaining DRC findings are all `warning`-severity silkscreen overlap
-on a board with 168 parts in 84 x 74 mm. Reference designators are at 0.8 mm,
+on a board with 206 parts in 84 x 100 mm. Reference designators are at 0.8 mm,
 the floor for both the board's own text rule and JLC's silkscreen, and values
 are hidden. Nothing here affects fabrication or assembly.
 
@@ -951,7 +974,7 @@ Everything you upload is already in `fab/`. Regenerate it any time with
 
 **1 — Upload the board.** At [jlcpcb.com](https://jlcpcb.com), *Order now*,
 then *Add gerber file* and give it `fab/esp32s3-can-sd-logger-gerbers.zip`.
-It will read 84 x 74 mm and 4 layers off the files.
+It will read 84 x 100 mm and 4 layers off the files.
 
 **2 — Board options.** Everything not listed here can stay at its default.
 
@@ -979,7 +1002,7 @@ and pin the stackup you were going to get regardless.
 quantity 5, tooling holes *Added by JLCPCB*. Every part is on the top face.
 
 **4 — Upload the parts files.** BOM is `fab/bom.csv`, CPL (they may call it
-"pick and place") is `fab/positions.csv`. Both list the same **145
+"pick and place") is `fab/positions.csv`. Both list the same **170
 designators** — they have to, because JLC pairs them up by designator and
 anything present in one and missing from the other simply does not get
 assembled. The eight through-hole connectors are deliberately in neither
@@ -991,8 +1014,8 @@ line falls through to the fuzzy text matcher, and you get offered a mechanical
 limit switch for a Schottky diode named "40V 1A" and a real WS2812 LED for a
 header named WS2812. Both happened.
 
-**5 — Match the parts.** **12** lines arrive with a part number and match
-themselves; the other **52** you pick on this screen. Most carry a specific
+**5 — Match the parts.** **23** lines arrive with a part number and match
+themselves; the other **49** you pick on this screen. Most carry a specific
 manufacturer part number and should match on it — the rest are generic
 passives where any equivalent will do.
 Take *Basic* parts over *Extended* where the value and package match; Extended
@@ -1011,7 +1034,7 @@ cannot go on backwards.
 
 ### The eight parts you solder yourself
 
-JLC places all 136 surface-mount parts. These eight are through-hole, and
+JLC places all 170 surface-mount parts. These eight are through-hole, and
 through-hole assembly is a separate, pricier service — it is easier to buy
 them and solder them yourself. They are large, widely spaced, and a good
 first soldering job.
@@ -1041,7 +1064,7 @@ automotive sensor wants and what the firmware's `DIVIDER_GAIN` assumes.
 
 ### This board has never been fabricated
 
-Rev A has been checked as hard as software can check it — ERC, DRC, a
+Rev B has been checked as hard as software can check it — ERC, DRC, a
 datasheet review that caught five real defects (§7), and part-by-part JLC
 sourcing — but no one has yet held one. Treat the first order as a
 prototype run: build a few, not fifty.
