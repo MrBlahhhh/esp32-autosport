@@ -21,8 +21,14 @@ A data logger you wire straight into a race car: 12 V and CAN come in on one
   outputs. `python gen/build_board.py` rebuilds the PCB from nothing, and
   [`gen/README.md`](gen/README.md) documents the whole pipeline — including
   the schematic-drawing conventions — so the next board can reuse it.
-- **State: routed clean, simulated, never manufactured.** Order a small
-  prototype run first.
+- **The firmware runs before the board exists.** `gen/simulate_firmware.py`
+  compiles the sketch for the PC against a model of this board and feeds it
+  CAN frames, sensor voltages and an ignition cut. Porting the proven MINI R53
+  shift-light firmware to this hardware turned up five defects that no ERC,
+  DRC or SPICE run can see — including a wideband that reads 17 % high and a
+  sensor rail that never powers up.
+- **State: routed clean, simulated, firmware ported, never manufactured.**
+  Order a small prototype run first.
 
 ---
 
@@ -165,13 +171,19 @@ every single drive. The chain that makes that survivable:
 
 Simulated end to end (§10, `sim/ridethru.png`): detection in under 1 ms, and
 from `PWR_FAIL` to the converters dropping out is **~108 ms with the sensor
-rail shed, ~53 ms without**. An SD flush-and-close is tens of milliseconds
-on a healthy card, so the shed path covers even a card that stalls.
+rail shed, ~53 ms without**.
 
 **Firmware contract:** on `PWR_FAIL` rising — drop `SENS_EN`, stop sampling,
 flush and close the file, then idle. Do not start a new write while
 `PWR_FAIL` is high. The window is guaranteed by hardware; spending it is
 firmware's job.
+
+The firmware that spends it now exists and has been run against that window
+(§10, *Firmware in the loop*). Measured: the file is closed **31 ms** after
+`PWR_FAIL`, leaving 76 ms of the bank unspent, and the card may take up to a
+**~90 ms** flush before the close no longer fits. That is roughly five times a
+healthy card's latency but it is a limit, not unlimited protection — a card
+that stalls for longer than that still loses the file.
 
 ### Reversed 5 V on the exposed 5 V pins
 
@@ -475,6 +487,11 @@ resistors (commodity at LCSC).
 | `plots/board-routed.png` | Render of the finished board, top |
 | `plots/board-back.png` | Render of the finished board, bottom — routing only, no parts |
 | `fab/` | Gerbers, drill, JLC BOM and pick-and-place (generated) |
+| `firmware/esp32_shiftlight_wideband/` | Firmware for this board: shift light, wideband BLE bridge, microSD logger |
+| `firmware/vendor/` | Verbatim copy of the R53 sketch — the control build, do not edit |
+| `gen/simulate_firmware.py` | Firmware-in-the-loop studies: runs the sketch and feeds it inputs |
+| `fwsim/` | The host shims and board model those studies run on |
+| `sim/fw/` | Per-run scenario, trace, serial log and findings (generated) |
 
 ### KiCad version
 
@@ -750,6 +767,53 @@ across to the +5 V island's pair, and the CAN transceiver's +5 V bypass sat
 8.8 mm from its supply pin. Both now sit at their pins, pinned by `PIN_FIXED`
 in `gen/generate_pcb.py` so the zone packer cannot drift them again.
 
+### Firmware in the loop
+
+A third script runs the **firmware itself** and feeds it inputs:
+
+```
+python gen/simulate_firmware.py
+```
+
+The sketch is compiled unmodified for the PC against shims for Arduino,
+FastLED, NimBLE, Wire, SD_MMC and TWAI, on a virtual clock, over a model of
+this board — which GPIO is really wired to what, the divider ratios, the
+switched sensor rail, the ADC ceiling, the power-fail detector and the
+ride-through budget. Scenarios inject CAN frames, sensor voltages, BLE
+connect/subscribe events and harness collapse. `fwsim/README.md` documents it,
+including what it cannot see.
+
+It exists because ERC, DRC and ngspice all pass on a board whose firmware
+reads the wrong pin. A wrong GPIO number is not a compile error; it is a board
+that boots, prints happy status lines, and measures nothing.
+
+**The control.** `firmware/vendor/` holds a verbatim copy of the shift-light +
+wideband sketch running in the MINI today. Study 1 requires the harness to
+agree that it is clean on its own hardware before any claim it makes about
+this board is worth reading.
+
+**What it found.** Run unmodified on this board, that known-good firmware has
+five defects, none of them bugs in it — every one is a pin that means
+something different here:
+
+| | |
+|---|---|
+| WS2812 data | drives `GPIO4`, which is `AIN3` here. The strip is on `GPIO48`; the shift light is dark for the entire run |
+| TWAI TX/RX | `GPIO5`/`GPIO6` are `AIN4` and `VBAT_SNS` here. No frame ever arrives, and the CAN controller drives two analog inputs |
+| I²C (ADS1115) | `GPIO7`/`GPIO8` are `SD_PWR_EN` and `SD_CD` here. Selecting the 16-bit converter from the phone toggles the microSD supply |
+| `DIVIDER_GAIN` | 2.0 is the reciprocal of that board's 10k/10k. This front end is 0.5769, so every wideband reading is **17 % high**, and the sketch's own 5.5 V clamp then silently truncates the top of the range |
+| `+5VS` | switched and off at reset. Nothing on the sensor harness reads anything until `SENS_EN` goes high, which that firmware never does |
+
+Plus the power-fail contract above, which that board has no signal for.
+
+**The port.** `firmware/esp32_shiftlight_wideband/` is the same firmware with
+those fixed, plus SD logging and the `PWR_FAIL` path. It passes all 31 checks.
+Study 11 is what sized the shutdown: it swept card latency and caught a
+redundant `flush()` before `close()` in the shutdown path — two full card
+writes instead of one — which had cut the tolerable card latency from ~90 ms
+to ~50 ms. `sim/firmware.png` plots the shift light tracking CAN and the
+ignition-off sequence.
+
 ### External DFT review
 
 An automated design-for-test review (tomachie, 85/100) was run on the design.
@@ -902,5 +966,14 @@ datasheet review that caught five real defects (§7), and part-by-part JLC
 sourcing — but no one has yet held one. Treat the first order as a
 prototype run: build a few, not fifty.
 
-**Out of scope:** firmware (TWAI, SDMMC, ADS1115, WS2812 on GPIO48, SPI
-client). The GPIO map in §6 is the firmware contract.
+**Firmware exists now** — `firmware/esp32_shiftlight_wideband/`, ported from
+the R53 shift-light sketch and passing all 31 firmware-in-the-loop checks
+(§10). It covers TWAI, the WS2812 header on GPIO48, the wideband on the
+internal ADC and the ADS1115, microSD logging and the `PWR_FAIL` shutdown
+path. The GPIO map in §6 is still the contract, and `fwsim/` now enforces it.
+
+**Still out of scope:** the SPI client breakout, the three spare-IO pins, and
+anything the simulator explicitly cannot see — the radio, USB, FreeRTOS
+scheduling and flash wear (`fwsim/README.md`). None of it has run on real
+silicon; the firmware has never been flashed to a board, because no board
+exists yet.

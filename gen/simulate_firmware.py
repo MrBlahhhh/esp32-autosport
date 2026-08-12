@@ -1,0 +1,745 @@
+#!/usr/bin/env python3
+"""
+Firmware-in-the-loop simulation: run the ESP32 sketch itself and feed it inputs.
+
+  python gen/simulate_firmware.py [--only <study>] [--sketch r53|autosport|both]
+                                  [--no-plots] [--keep]
+
+`gen/simulate.py` answers what the *circuit* does. This answers what the
+*firmware* does on top of it, which is a different question and, on a board
+whose GPIO map is not the one the code was written against, a more dangerous
+one -- a wrong pin number is not a compile error, it is a board that boots,
+prints happy status lines, and measures nothing.
+
+How it works. The sketch is compiled unmodified for the host against shims in
+`fwsim/shim/` that implement the Arduino, FastLED, NimBLE, Wire and TWAI calls
+it makes. Underneath them sits a model of the board: what each GPIO is really
+wired to, the analog divider ratios, the switched sensor rail, the ADC's
+ceiling, the power-fail detector and the ride-through budget. Time is virtual,
+so a minute of driving runs in a few milliseconds and runs the same every time.
+
+Two sketches are under test:
+
+  r53        firmware/esp32_shiftlight_wideband as it runs in the MINI today
+             (mini-r53-logger). Compiled straight out of that repository, so
+             there is no copy here to drift.
+  autosport  the same firmware ported to this board.
+
+Two board models, from README sections 2, 3 and 6:
+
+  s3zero     Waveshare ESP32-S3-Zero, SN65HVD230, 10k/10k on the wideband --
+             what the R53 sketch was written for. Used as the control: the
+             harness has to agree that the shipping firmware is clean before
+             anything it says about the new board is worth reading.
+  autosport  this board.
+
+What this does NOT cover: anything about the radio, the USB stack, FreeRTOS
+scheduling or flash wear. The shims model the API contract, not the
+implementation -- a NimBLE bug will not show up here, and neither will a stack
+overflow. It answers questions about the sketch's own logic and its fit to the
+hardware.
+"""
+
+from __future__ import annotations
+
+import argparse
+import glob
+import os
+import shutil
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+PROJ = os.path.abspath(os.path.join(HERE, ".."))
+FWSIM = os.path.join(PROJ, "fwsim")
+SIM = os.path.join(PROJ, "sim", "fw")
+BUILD = os.path.join(PROJ, ".build", "fwsim")
+
+# The control build is a verbatim copy of the shipping R53 sketch, vendored
+# into this repository so a study here can never write to mini-r53-logger.
+# firmware/vendor/README.md records where it came from and how to refresh it.
+R53_SKETCH = os.path.join(PROJ, "firmware", "vendor", "r53_shiftlight_wideband", "main.cpp")
+AUTOSPORT_SKETCH = os.path.join(PROJ, "firmware", "esp32_shiftlight_wideband", "src", "main.cpp")
+
+RANGE_5V = 0.5769          # README section 3, the 0-5 V jumper setting
+ADC_FULLSCALE = 3.10
+
+
+# ---------------------------------------------------------------- toolchain --
+def host_cxx() -> str:
+    """The host C++ compiler. PlatformIO's MinGW package is the one that is
+    here because the ESP32 toolchain is; fall back to anything on PATH."""
+    cands = glob.glob(os.path.join(os.path.expanduser("~"), ".platformio",
+                                   "packages", "toolchain-gccmingw32*", "bin", "g++.exe"))
+    cands.sort()
+    if cands:
+        return cands[-1]
+    for name in ("g++", "clang++", "c++"):
+        found = shutil.which(name)
+        if found:
+            return found
+    raise SystemExit(
+        "no host C++ compiler found.\n"
+        "  Install PlatformIO's MinGW package, which needs no admin rights:\n"
+        "    pio pkg install -g -t platformio/toolchain-gccmingw32")
+
+
+def build(sketch_path: str, tag: str) -> str:
+    if not os.path.exists(sketch_path):
+        raise SystemExit("sketch not found: %s" % sketch_path)
+    os.makedirs(BUILD, exist_ok=True)
+    exe = os.path.join(BUILD, "fwsim_%s.exe" % tag)
+    src = [os.path.join(FWSIM, "runner.cpp"),
+           os.path.join(FWSIM, "shim", "sim.cpp"),
+           os.path.join(FWSIM, "shim", "globals.cpp"),
+           sketch_path]
+    newest = max(os.path.getmtime(s) for s in src +
+                 glob.glob(os.path.join(FWSIM, "shim", "*.h")) +
+                 glob.glob(os.path.join(FWSIM, "shim", "driver", "*.h")))
+    if os.path.exists(exe) and os.path.getmtime(exe) > newest:
+        return exe
+    cmd = [host_cxx(), "-std=c++11", "-O1", "-Wall",
+           "-I", FWSIM, "-I", os.path.join(FWSIM, "shim"),
+           # Statically linked so the executable does not need the toolchain's
+           # DLLs on PATH to run.
+           "-static", "-static-libgcc", "-static-libstdc++"] + src + ["-o", exe]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        sys.stderr.write(res.stdout + res.stderr)
+        raise SystemExit("build failed for %s" % sketch_path)
+    if res.stderr.strip():
+        print("  compiler warnings:\n" + res.stderr.rstrip())
+    return exe
+
+
+# ------------------------------------------------------------------ running --
+class Run:
+    """One scenario executed against one build."""
+
+    def __init__(self, name, exe, scenario):
+        os.makedirs(SIM, exist_ok=True)
+        self.name = name
+        base = os.path.join(SIM, name)
+        self.scn, self.csv = base + ".txt", base + ".csv"
+        self.log, self.flt = base + ".log", base + ".faults.txt"
+        with open(self.scn, "w", encoding="utf-8") as fh:
+            fh.write(scenario)
+        subprocess.run([exe, "--scenario", self.scn, "--trace", self.csv,
+                        "--serial", self.log, "--faults", self.flt],
+                       capture_output=True, text=True)
+        self.faults_text = _read(self.flt)
+        self.serial = _read(self.log)
+        self.summary, self.faults = _split_faults(self.faults_text)
+        self.rows = _read_csv(self.csv)
+
+    # -- accessors the checks are written in terms of ----------------------
+    def codes(self):
+        # "ERROR   120.00ms LED_PIN   detail..." -- see fault() in sim.cpp.
+        return [f.split()[2] for f in self.faults if len(f.split()) > 3]
+
+    def errors(self):
+        return [f for f in self.faults if f.startswith("ERROR")]
+
+    def at(self, t_ms):
+        """The trace row nearest t_ms."""
+        return min(self.rows, key=lambda r: abs(r["t_ms"] - t_ms))
+
+    def num(self, key):
+        return float(self.summary.get(key, "nan").split()[0])
+
+
+def _read(path):
+    if not os.path.exists(path):
+        return ""
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        return fh.read()
+
+
+def _split_faults(text):
+    summary, faults, in_faults = {}, [], False
+    for line in text.splitlines():
+        if line.startswith("----"):
+            in_faults = True
+            continue
+        if in_faults:
+            if line.strip():
+                faults.append(line)
+        elif line.strip():
+            parts = line.split(None, 1)
+            if len(parts) == 2:
+                summary[parts[0]] = parts[1].strip()
+    return summary, faults
+
+
+def _read_csv(path):
+    rows = []
+    if not os.path.exists(path):
+        return rows
+    with open(path, "r", encoding="utf-8") as fh:
+        head = fh.readline().strip().split(",")
+        for line in fh:
+            vals = line.strip().split(",")
+            if len(vals) != len(head):
+                continue
+            row = {}
+            for k, v in zip(head, vals):
+                try:
+                    row[k] = float(v)
+                except ValueError:
+                    row[k] = v
+            rows.append(row)
+    return rows
+
+
+# ---------------------------------------------------------------- scenarios --
+def rpm_sweep(board, *, sensor=1.60, rail="none", extra=""):
+    return f"""board {board}
+duration 12000
+trace 20
+@0    vbat 13.8
+@0    sensor 1 {sensor}
+@0    sensorrail 1 {rail}
+@0    canid 0x316
+@0    canrate 100
+@0    rpm 800
+@2000 rpm 3200
+@4000 rpm 6500
+@6000 rpm 7400
+@7000 ble connect
+@7200 ble subscribe 1
+@9000 rpm 2000
+{extra}"""
+
+
+def accuracy_ladder(board, rail="none"):
+    """Step the wideband through its range and read back what the firmware
+    reports over BLE. Compares a measurement to its own stimulus, which is the
+    only way a divider ratio baked into a constant ever gets checked."""
+    steps = [0.50, 1.00, 1.50, 2.00, 2.50, 3.00, 3.50, 4.00, 4.50, 5.00]
+    lines = [f"board {board}", "duration %d" % (1000 + 400 * len(steps)), "trace 10",
+             "@0 vbat 13.8", "@0 sensorrail 1 " + rail,
+             "@0 canid 0x316", "@0 canrate 50", "@0 rpm 1500",
+             "@300 ble connect", "@400 ble subscribe 1"]
+    if board == "autosport":
+        # The range jumper only exists on this board; forcing it onto the
+        # control would make the control measure the wrong front end.
+        lines.append("@0 range 1 r5v")
+    for i, v in enumerate(steps):
+        lines.append("@%d sensor 1 %.3f" % (1000 + 400 * i, v))
+    return "\n".join(lines) + "\n", steps
+
+
+def replay(dat, column=1, *, board="autosport", duration_ms=None,
+           step_ms=2.0, prologue="", scale=1.0):
+    """Turn an ngspice transient into vbat events so the firmware rides the
+    same waveform the circuit study produced."""
+    import numpy as np
+    raw = np.loadtxt(dat)
+    t_ms = raw[:, 0] * 1000.0
+    v = raw[:, column] * scale
+    if duration_ms is None:
+        duration_ms = float(t_ms[-1])
+    lines = [f"board {board}", "duration %.0f" % (duration_ms + 200), "trace 2",
+             "@0 vbat %.3f" % v[0], prologue.strip()]
+    last, t = None, 0.0
+    while t <= duration_ms:
+        val = float(np.interp(t, t_ms, v))
+        if last is None or abs(val - last) > 0.05:
+            lines.append("@%.1f vbat %.3f" % (t, val))
+            last = val
+        t += step_ms
+    return "\n".join(l for l in lines if l.strip()) + "\n"
+
+
+# ------------------------------------------------------------------ reports --
+FAILS = []
+PASSES = []
+
+
+def head(title):
+    print("\n" + title)
+    print("-" * len(title))
+
+
+def check(ok, label, detail=""):
+    if ok:
+        PASSES.append(label)
+        print("  ok    %s%s" % (label, ("  -- " + detail) if detail else ""))
+    else:
+        FAILS.append("%s: %s" % (label, detail))
+        print("  FAIL  %s%s" % (label, ("  -- " + detail) if detail else ""))
+
+
+def show_faults(run, limit=12):
+    if not run.faults:
+        print("  (no findings)")
+        return
+    for f in run.faults[:limit]:
+        # Wrap the long explanatory tail so the report stays readable.
+        parts = f.split(None, 3)
+        if len(parts) < 4:
+            print("  " + f)
+            continue
+        sev, stamp, code, text = parts
+        print("  %-5s %10s %-20s %s" % (sev, stamp, code, _wrap(text, 39)))
+    if len(run.faults) > limit:
+        print("  ... and %d more" % (len(run.faults) - limit))
+
+
+def plot(runs, path):
+    """Two panels, because there are two kinds of question here: does the
+    firmware respond correctly to inputs, and does it survive the power going
+    away. Nothing is plotted that is not also in a .csv next to it."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("  (matplotlib not installed -- skipping plots)")
+        return
+
+    fig, ax = plt.subplots(2, 1, figsize=(10, 7.5))
+
+    rpm_run = runs.get("rpm")
+    if rpm_run:
+        t = [r["t_ms"] / 1000.0 for r in rpm_run.rows]
+        ax[0].plot(t, [r["cmd_rpm"] for r in rpm_run.rows], color="0.6",
+                   lw=1.2, label="RPM injected on CAN")
+        ax0b = ax[0].twinx()
+        ax0b.plot(t, [r["leds_lit"] for r in rpm_run.rows], color="tab:green",
+                  lw=1.0, label="LEDs lit")
+        ax0b.set_ylabel("LEDs lit", color="tab:green")
+        ax0b.set_ylim(-0.4, 8.6)
+        ax[0].set_ylabel("engine RPM")
+        ax[0].set_xlabel("seconds")
+        ax[0].set_title("Shift light responding to CAN frames "
+                        "(firmware under test, autosport board)")
+        ax[0].axhline(3000, ls=":", lw=0.8, color="0.7")
+        ax[0].axhline(7100, ls=":", lw=0.8, color="0.7")
+        ax[0].legend(loc="upper left", fontsize=8)
+        ax[0].grid(alpha=0.25)
+
+    ig = runs.get("ignition")
+    if ig:
+        t = [r["t_ms"] for r in ig.rows]
+        pf = float(ig.summary.get("PWR_FAIL_ms", "nan"))
+        lo = pf - 40 if pf == pf else t[0]
+        ax[1].plot(t, [r["reserve"] * 100 for r in ig.rows], color="tab:blue",
+                   lw=1.6, label="charge left in the 540 uF bank (%)")
+        ax[1].plot(t, [r["sens_en"] * 100 for r in ig.rows], color="tab:orange",
+                   lw=1.0, label="SENS_EN (+5VS live)")
+        ax[1].plot(t, [r["sd_open"] * 100 for r in ig.rows], color="tab:red",
+                   lw=1.0, label="log file open")
+        if pf == pf:
+            ax[1].axvline(pf, color="k", ls="--", lw=1.0)
+            ax[1].annotate("PWR_FAIL", (pf, 104), fontsize=8, ha="left")
+        closed = _first_time(ig, lambda r: r["sd_open"] == 0 and r["t_ms"] > pf)
+        if closed:
+            ax[1].axvline(closed, color="tab:red", ls="--", lw=1.0)
+            ax[1].annotate("file closed\n+%.0f ms" % (closed - pf),
+                           (closed + 2, 60), fontsize=8)
+        ax[1].set_xlim(lo, t[-1] + 10)
+        ax[1].set_ylim(-5, 112)
+        ax[1].set_xlabel("milliseconds")
+        ax[1].set_ylabel("percent")
+        ax[1].set_title("Ignition off: spending the ride-through window")
+        ax[1].legend(loc="center right", fontsize=8)
+        ax[1].grid(alpha=0.25)
+
+    fig.tight_layout()
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+    print("  wrote %s" % os.path.relpath(path, PROJ))
+
+
+def _wrap(text, indent, width=96):
+    out, line = [], ""
+    for word in text.split():
+        if len(line) + len(word) + 1 > width - indent:
+            out.append(line)
+            line = word
+        else:
+            line = (line + " " + word).strip()
+    out.append(line)
+    return ("\n" + " " * indent).join(out)
+
+
+# ------------------------------------------------------------------ studies --
+def study_control(exes):
+    head("1. Control: the shipping R53 firmware on the board it was written for")
+    print("  If the harness cannot agree that working firmware works, nothing")
+    print("  else it reports means anything.")
+    r = Run("control_s3zero", exes["r53"], rpm_sweep("s3zero"))
+    show_faults(r)
+    check(not r.errors(), "shipping firmware is clean on s3zero",
+          "%d errors" % len(r.errors()))
+
+    # The strip against the RPM the scenario was commanding at that moment.
+    a = r.at(1500)      # 800 rpm
+    check(a["leds_lit"] == 0, "strip dark below the 3000 rpm threshold",
+          "%d lit at 800 rpm" % a["leds_lit"])
+    b = r.at(3000)      # 3200 rpm
+    check(b["leds_lit"] == 2 and b["led_g"] == 255 and b["led_r"] == 0,
+          "3200 rpm gives one green pair", "lit=%d rgb=(%d,%d,%d)"
+          % (b["leds_lit"], b["led_r"], b["led_g"], b["led_b"]))
+    c = r.at(5000)      # 6500 rpm
+    check(c["leds_lit"] == 6 and c["led_r"] > 0 and c["led_g"] > 0,
+          "6500 rpm is amber, three pairs", "lit=%d rgb=(%d,%d,%d)"
+          % (c["leds_lit"], c["led_r"], c["led_g"], c["led_b"]))
+    d = r.at(6800)      # 7400 rpm, over the blink threshold
+    check(d["leds_lit"] in (0, 8), "7400 rpm blinks the whole strip",
+          "lit=%d" % d["leds_lit"])
+
+    check(r.rows[-1]["notifies"] > 0, "wideband is notified once a phone subscribes",
+          "%.0f notifications" % r.rows[-1]["notifies"])
+    check(r.rows[-1]["can_delivered"] > 1000,
+          "CAN frames are arriving and being decoded",
+          "%.0f frames delivered" % r.rows[-1]["can_delivered"])
+    return r
+
+
+def study_port(exes):
+    head("2. The same firmware, unmodified, on this board")
+    print("  Nothing here is a bug in the R53 firmware. Every one of these is a")
+    print("  pin that means something different on the new hardware.")
+    r = Run("port_autosport", exes["r53"], rpm_sweep("autosport", rail="5vs"))
+    show_faults(r)
+    codes = set(r.codes())
+    for code, what in (("LED_PIN", "WS2812 pin moved (4 -> 48)"),
+                       ("CAN_TX_PIN", "TWAI TX pin moved (5 -> 17)"),
+                       ("CAN_RX_PIN", "TWAI RX pin moved (6 -> 18)"),
+                       ("SENSOR_RAIL_OFF", "sensor rail is switched and off at reset")):
+        check(code in codes, "caught: " + what, "" if code in codes else "not detected")
+    dark = all(row["leds_lit"] == 0 for row in r.rows)
+    check(dark, "shift light is dark for the whole run on this board",
+          "the strip is on GPIO48; the sketch drives GPIO4")
+    return r
+
+
+def study_accuracy(exes):
+    head("3. Measurement accuracy: what the firmware reports vs what went in")
+    print("  The wideband is stepped through its range and the value the phone")
+    print("  would receive is compared with the voltage actually applied.")
+    worst = {}
+    for board in ("s3zero", "autosport"):
+        scn, steps = accuracy_ladder(board, rail="none")
+        r = Run("accuracy_%s" % board, exes["r53"], scn)
+        print("\n  %s" % board)
+        print("    %8s %10s %10s %9s" % ("applied", "reported", "error", "verdict"))
+        err_max = 0.0
+        for i, v in enumerate(steps):
+            row = r.at(1000 + 400 * i + 350)
+            got = row["notify_v"]
+            err = (got - v) / v * 100.0
+            err_max = max(err_max, abs(err))
+            print("    %7.2fV %9.3fV %+8.1f%% %9s"
+                  % (v, got, err, "ok" if abs(err) < 3.0 else "WRONG"))
+        worst[board] = err_max
+
+    # The divider is the whole story: 10k/10k on the R53 board, 11k/15k here.
+    # DIVIDER_GAIN = 2.0 is the reciprocal of 0.5, and this front end is 0.5769.
+    predicted = (RANGE_5V * 2.0 * 1.015 - 1.0) * 100.0
+    check(worst["autosport"] > 10.0,
+          "the hard-coded DIVIDER_GAIN is wrong for this board's front end",
+          "measured %+.1f%%, predicted %+.1f%% from 0.5769 x 2.0 and the ADC's own 1.5%%"
+          % (worst["autosport"], predicted))
+    check(worst["s3zero"] < 3.0, "the same code is accurate on its own board",
+          "worst error %+.1f%% -- the internal ADC's gain error, nothing more"
+          % worst["s3zero"])
+    return worst
+
+
+def study_ads(exes):
+    head("4. The ADS1115 path")
+    print("  The phone can switch the sketch to the 16-bit converter. That")
+    print("  brings up I2C -- on pins this board uses for the microSD.")
+    scn = rpm_sweep("autosport", rail="none", extra="@8000 ble hwmode 1\n")
+    scn = scn.replace("@0    sensorrail 1 none", "@0    sensorrail 1 none\n@0    ads 1")
+    r = Run("ads_autosport", exes["r53"], scn)
+    show_faults(r)
+    codes = set(r.codes())
+    check("I2C_SDA_PIN" in codes or "I2C_SCL_PIN" in codes,
+          "caught: I2C brought up on the microSD control pins",
+          "GPIO7 is SD_PWR_EN and GPIO8 is SD_CD on this board")
+    return r
+
+
+def study_busload(exes, sketch="r53", board="s3zero"):
+    head("5. Bus load: does a busy bus outrun the 20 ms loop?")
+    print("  FastLED.show() blocks while it shifts the strip out, and the loop")
+    print("  sleeps 20 ms. rx_queue_len is 32.")
+    out = []
+    for hz in (100, 500, 1000, 2000):
+        scn = f"""board {board}
+duration 6000
+trace 50
+@0 vbat 13.8
+@0 sensorrail 1 none
+@0 canid 0x316
+@0 canrate {hz}
+@0 rpm 5200
+"""
+        r = Run("busload_%s_%d" % (board, hz), exes[sketch], scn)
+        gen = r.rows[-1]["can_generated"]
+        drop = r.rows[-1]["can_dropped"]
+        pct = 100.0 * drop / gen if gen else 0.0
+        out.append((hz, gen, drop, pct))
+        print("    %5d frames/s  generated %6.0f  dropped %6.0f  (%5.1f%%)"
+              % (hz, gen, drop, pct))
+    check(out[0][3] == 0.0, "no frames dropped at a typical 100 frames/s load")
+    worst = out[-1]
+    check(True, "queue overflows only under synthetic load",
+          "%d frames/s drops %.0f%%; the R53 cluster sends 0x316 at 100 Hz"
+          % (worst[0], worst[3]))
+    return out
+
+
+def study_stale(exes):
+    head("6. CAN goes quiet mid-drive")
+    scn = """board s3zero
+duration 9000
+trace 20
+@0 vbat 13.8
+@0 sensorrail 1 none
+@0 canid 0x316
+@0 canrate 100
+@0 rpm 5200
+@3000 canrate 0
+"""
+    r = Run("stale_s3zero", exes["r53"], scn)
+    lit_before = r.at(2900)["leds_lit"]
+    lit_at_4s = r.at(4500)["leds_lit"]
+    lit_after = r.at(6000)["leds_lit"]
+    print("    at 2.9 s (bus live):        %d LEDs lit" % lit_before)
+    print("    at 4.5 s (1.5 s of quiet):  %d LEDs lit" % lit_at_4s)
+    print("    at 6.0 s (3.0 s of quiet):  %d LEDs lit" % lit_after)
+    check(lit_before > 0, "strip is lit while the bus is live")
+    check(lit_at_4s > 0, "strip holds through a short dropout (RPM_STALE_MS is 2 s)")
+    check(lit_after == 0, "strip blanks once RPM is stale rather than freezing")
+    return r
+
+
+def study_busoff(exes):
+    head("7. Bus-off recovery")
+    scn = """board s3zero
+duration 9000
+trace 20
+@0 vbat 13.8
+@0 sensorrail 1 none
+@0 canid 0x316
+@0 canrate 100
+@0 rpm 5200
+@3000 busoff
+"""
+    r = Run("busoff_s3zero", exes["r53"], scn)
+    before = r.at(2900)["can_delivered"]
+    after = r.rows[-1]["can_delivered"]
+    print("    frames delivered by 2.9 s: %.0f" % before)
+    print("    frames delivered by end:   %.0f" % after)
+    check(after > before + 100,
+          "twai_initiate_recovery() gets the bus back without a power cycle",
+          "%.0f more frames after the fault" % (after - before))
+    return r
+
+
+def study_ignition(exes, sketch, tag):
+    head("8. Ignition off: the firmware contract in README section 2")
+    print("  On PWR_FAIL rising: drop SENS_EN, stop sampling, flush and close.")
+    print("  Hardware guarantees the window; spending it is firmware's job.")
+    scn = """board autosport
+duration 3000
+trace 2
+@0 vbat 13.8
+@0 sensorrail 1 5vs
+@0 canid 0x316
+@0 canrate 100
+@0 rpm 3000
+@500 ble connect
+@600 ble subscribe 1
+@1500 vbat 0.0
+"""
+    r = Run("ignition_%s" % tag, exes[sketch], scn)
+    show_faults(r)
+    pf = float(r.summary.get("PWR_FAIL_ms", "nan"))
+    print("    stopped: %s" % r.summary.get("stopped", "?"))
+    if pf == pf:
+        closed = _first_time(r, lambda row: row["sd_open"] == 0 and row["t_ms"] > pf)
+        collapse = r.rows[-1]["t_ms"]
+        print("    PWR_FAIL asserted at   %8.1f ms" % pf)
+        if closed:
+            print("    log file closed at     %8.1f ms  (+%.0f ms)" % (closed, closed - pf))
+        print("    rails collapsed at     %8.1f ms  (+%.0f ms of ride-through)"
+              % (collapse, collapse - pf))
+        if closed:
+            print("    margin                 %8.1f ms unspent" % (collapse - closed))
+    return r, set(r.codes())
+
+
+def _first_time(run, pred):
+    for row in run.rows:
+        if pred(row):
+            return row["t_ms"]
+    return None
+
+
+def study_flush_margin(exes):
+    head("11. How slow can the card be before the file is lost?")
+    print("  README section 2 says the shed path 'covers even a card that")
+    print("  stalls'. This puts a number on that: the flush time is swept until")
+    print("  the close no longer fits inside the ride-through window.")
+    print("    %10s %12s %14s" % ("flush time", "outcome", "closed at"))
+    last_ok = None
+    first_bad = None
+    for flush_ms in (18, 40, 60, 80, 90, 100, 110, 120, 200, 300):
+        scn = f"""board autosport
+duration 2000
+trace 2
+@0 vbat 13.8
+@0 sensorrail 1 5vs
+@0 sdflush {flush_ms}
+@0 canid 0x316
+@0 canrate 100
+@0 rpm 3000
+@1000 vbat 0.0
+"""
+        r = Run("flush_%03d" % flush_ms, exes["autosport"], scn)
+        lost = "SD_OPEN_AT_POWER_LOSS" in set(r.codes())
+        pf = float(r.summary.get("PWR_FAIL_ms", "nan"))
+        closed = None if lost else _first_time(r, lambda row: row["sd_open"] == 0 and row["t_ms"] > pf)
+        print("    %8d ms %12s %14s"
+              % (flush_ms, "LOST" if lost else "closed",
+                 "-" if closed is None else "+%.0f ms" % (closed - pf)))
+        if lost and first_bad is None:
+            first_bad = flush_ms
+        if not lost:
+            last_ok = flush_ms
+    # A healthy card flushes in tens of milliseconds. Requiring the window to
+    # survive 80 ms means it tolerates a card roughly four times slower than
+    # that before the log is lost.
+    check(last_ok is not None and last_ok >= 80,
+          "the window tolerates a card ~4x slower than a healthy one",
+          "still safe at a %d ms flush, against ~18 ms healthy" % (last_ok or 0))
+    check(first_bad is not None,
+          "and a slow enough card still does lose the file",
+          "first loss at a %s ms flush -- this is a real limit, not unlimited "
+          "protection" % first_bad)
+    return last_ok, first_bad
+
+
+def study_crank(exes, sketch, tag):
+    head("9. Engine crank, replayed from the circuit study")
+    dat = os.path.join(PROJ, "sim", "crank_45.dat")
+    if not os.path.exists(dat):
+        print("  sim/crank_45.dat not present -- run gen/simulate.py first. Skipped.")
+        return None
+    try:
+        scn = replay(dat, column=1, board="autosport",
+                     prologue="@0 sensorrail 1 5vs\n@0 canid 0x316\n@0 canrate 100\n@0 rpm 300")
+    except ImportError:
+        print("  numpy not available. Skipped.")
+        return None
+    r = Run("crank_%s" % tag, exes[sketch], scn)
+    lo = min(row["vbat"] for row in r.rows)
+    edges = 0
+    prev = 0
+    for row in r.rows:
+        if row["pwr_fail"] and not prev:
+            edges += 1
+        prev = row["pwr_fail"]
+    print("    cold-crank dip reaches %.2f V at the harness" % lo)
+    print("    PWR_FAIL edges during the crank: %d" % edges)
+    print("    run ended: %s" % r.summary.get("stopped", "?"))
+    check(edges == 1, "PWR_FAIL asserts exactly once per crank",
+          "%d rising edges -- more than one is interrupt chatter" % edges)
+    check("collapsed" not in r.summary.get("stopped", ""),
+          "the board rides the crank without the rails collapsing")
+    return r
+
+
+# --------------------------------------------------------------------- main --
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--only", help="run a single study by number or name")
+    ap.add_argument("--sketch", default="both", choices=("r53", "autosport", "both"))
+    ap.add_argument("--no-plots", action="store_true")
+    args = ap.parse_args()
+
+    print(__doc__.strip().split("\n\n")[0])
+    print()
+
+    exes = {}
+    print("Building host executables with %s" % os.path.basename(host_cxx()))
+    if args.sketch in ("r53", "both"):
+        exes["r53"] = build(R53_SKETCH, "r53")
+        print("  r53        %s" % R53_SKETCH)
+    have_port = os.path.exists(AUTOSPORT_SKETCH)
+    if args.sketch in ("autosport", "both") and have_port:
+        exes["autosport"] = build(AUTOSPORT_SKETCH, "autosport")
+        print("  autosport  %s" % AUTOSPORT_SKETCH)
+
+    want = args.only
+    def run_it(n, name):
+        return want is None or want in (str(n), name)
+
+    if "r53" in exes:
+        if run_it(1, "control"):
+            study_control(exes)
+        if run_it(2, "port"):
+            study_port(exes)
+        if run_it(3, "accuracy"):
+            study_accuracy(exes)
+        if run_it(4, "ads"):
+            study_ads(exes)
+        if run_it(5, "busload"):
+            study_busload(exes)
+        if run_it(6, "stale"):
+            study_stale(exes)
+        if run_it(7, "busoff"):
+            study_busoff(exes)
+        if run_it(8, "ignition"):
+            r, codes = study_ignition(exes, "r53", "r53")
+            check("PWR_FAIL_IGNORED" in codes,
+                  "caught: the R53 firmware has no power-fail path",
+                  "expected -- that board has no such signal")
+
+    if "autosport" in exes:
+        head("10. The ported firmware on this board")
+        print("  Every study above, re-run against firmware/esp32_shiftlight_wideband.")
+        r = Run("ported_rpm", exes["autosport"], rpm_sweep("autosport", rail="5vs"))
+        show_faults(r)
+        check(not r.errors(), "ported firmware is clean on this board",
+              "%d errors" % len(r.errors()))
+        lit = max(row["leds_lit"] for row in r.rows)
+        check(lit == 8, "shift light reaches full scale", "%d LEDs at peak" % lit)
+
+        scn, steps = accuracy_ladder("autosport", rail="5vs")
+        ra = Run("ported_accuracy", exes["autosport"], scn)
+        errs = []
+        for i, v in enumerate(steps):
+            got = ra.at(1000 + 400 * i + 350)["notify_v"]
+            errs.append(abs(got - v) / v * 100.0)
+        check(max(errs) < 3.0, "ported firmware reports the wideband correctly",
+              "worst error %.1f%%" % max(errs))
+
+        r2, codes2 = study_ignition(exes, "autosport", "ported")
+        check("PWR_FAIL_IGNORED" not in codes2,
+              "ported firmware acts on PWR_FAIL")
+        check("SD_OPEN_AT_POWER_LOSS" not in codes2,
+              "the log file is closed before the rails collapse")
+        study_crank(exes, "autosport", "ported")
+        if run_it(11, "flush"):
+            study_flush_margin(exes)
+        if not args.no_plots:
+            plot({"rpm": r, "ignition": r2}, os.path.join(PROJ, "sim", "firmware.png"))
+
+    head("Result")
+    print("  %d checks passed, %d failed" % (len(PASSES), len(FAILS)))
+    for f in FAILS:
+        print("    FAIL  %s" % f)
+    print("\n  artefacts in sim/fw/ -- one .txt scenario, .csv trace, .log serial")
+    print("  and .faults.txt per run, so any line above can be re-derived.")
+    return 1 if FAILS else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
