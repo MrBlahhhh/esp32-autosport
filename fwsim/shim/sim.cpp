@@ -102,8 +102,13 @@ static Board make_autosport() {
   b.has_pwr_fail = true;
   b.pwr_fail_trip = 11.0;        // README section 2
   b.pwr_fail_hyst = 0.3;
-  b.ridethru_shed_ms = 108.0;    // sim/ridethru_shed.dat
-  b.ridethru_noshed_ms = 53.0;   // sim/ridethru_noshed.dat
+  // Scaled from the 540 uF ngspice result (108 / 53 ms) for the 760 uF bank
+  // that replaced it: the load is constant-power over a fixed voltage window,
+  // so the hold-up time is linear in C. Re-run gen/simulate.py to replace
+  // these with measured values -- ngspice was not installed when the bank
+  // changed, so nothing here has been through the circuit simulator yet.
+  b.ridethru_shed_ms = 152.0;    // was 108 at 540 uF
+  b.ridethru_noshed_ms = 75.0;   // was 53 at 540 uF
   return b;
 }
 

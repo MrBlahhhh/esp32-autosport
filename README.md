@@ -10,7 +10,7 @@ A data logger you wire straight into a race car: 12 V and CAN come in on one
   Clamped. A sensor wire shorted to 12 V? That channel's fuse trips, the
   board keeps logging.
 - **Ignition-off doesn't corrupt the card.** The board sees the power cut
-  ~100 ms before it actually dies and uses that time (banked in two big
+  ~150 ms before it actually dies and uses that time (banked in two big
   capacitors) to finish the write and close the file.
 - **4 sensor inputs, jumper-set for 0–3.3 V / 0–5 V / 0–16 V**, readable
   fast-and-rough on the ESP32's own ADC or slow-and-precise on a 16-bit
@@ -39,9 +39,11 @@ solder jumpers.
 
 Feature set is deliberately close to the Autosport Labs ESP32-CAN-X2 and the
 ESP32 Dual CAN-FD dev board — same ESP32-S3-WROOM-1 module, same 4-pin JST-PH
-harness convention (12 V / GND / CAN_H / CAN_L), same default-on 120 Ω
-termination jumper — but trades the second CAN channel for an onboard microSD
-socket and conditioned analog inputs.
+harness convention (12 V / GND / CAN_H / CAN_L), same jumper-selectable 120 Ω
+termination — but trades the second CAN channel for an onboard microSD socket
+and conditioned analog inputs. Termination ships **off** here rather than on,
+which is the one place this board deliberately breaks with that convention:
+the common case is plugging into a vehicle bus that is already terminated.
 
 **Status: Rev B, fully routed.** Schematic is ERC-clean on KiCad 9.0. The PCB
 is **84 x 100 mm**, 4-layer, **fully placed and routed with zero DRC errors and
@@ -62,10 +64,10 @@ be a small prototype run.**
 | | |
 |---|---|
 | MCU | ESP32-S3-WROOM-1-N16R8 (16 MB flash, 8 MB octal PSRAM) |
-| Supply input | 6–36 V continuous, reverse-protected to −65 V, transients clamped at 64.5 V, ~108 ms power-cut ride-through |
-| CAN | 1× CAN 2.0B, TJA1051T/3, ESP32-S3 TWAI controller, jumper-selectable split termination |
+| Supply input | 6–36 V continuous, reverse-protected to −65 V, transients clamped at 64.5 V, ~152 ms power-cut ride-through |
+| CAN | 1× CAN 2.0B, TJA1051T/3, ESP32-S3 TWAI controller, split termination, **off by default** |
 | Storage | microSD, 4-bit SDMMC, switchable card supply |
-| Analog in | 4 channels, solder-jumper divider (0–3.3 V / 0–5 V / 0–16 V) + optional pull-up bias, shared by the ESP32 ADC and a 16-bit ADS1115 |
+| Analog in | 4 channels, solder-jumper divider, **0–5 V by default** (0–3.3 V / 0–16 V by jumper) + optional pull-up bias, shared by the ESP32 ADC and a 16-bit ADS1115 |
 | Extras | Battery voltage monitor, USB-C (native USB), I²C/Qwiic, UART0, SPI breakout, WS2812 5 V DIN header, 6-pin spare-IO header |
 | Rails | +5 V @ 1 A, +3V3 @ 1 A, +5 V sensor excitation (separately fused) |
 | Parts | 195 component instances, 98 distinct BOM lines, all surface-mount except 8 through-hole connectors |
@@ -162,7 +164,7 @@ every single drive. The chain that makes that survivable:
    `+VBAT` coasts, so the warning arrives before any stored energy has been
    spent. A 1 M feedback resistor adds ~0.3 V of hysteresis so cranking sag
    cannot chatter the interrupt.
-2. **Coast** — `+VBAT` holds 540 µF (100 µF + 2 × 220 µF/100 V). Energy is
+2. **Coast** — `+VBAT` holds 760 µF (100 µF + 2 × 330 µF/100 V). Energy is
    ½CV², so the bank lives on the input rail where a volt is worth most.
 3. **Shed** — `SENS_EN` (GPIO16) drives a 2N7002 + AO3401 high-side switch on
    the sensor rail. Sensors are external loads firmware cannot otherwise
@@ -170,8 +172,12 @@ every single drive. The chain that makes that survivable:
    reset — the rail comes up only when firmware asks.
 
 Simulated end to end (§10, `sim/ridethru.png`): detection in under 1 ms, and
-from `PWR_FAIL` to the converters dropping out is **~108 ms with the sensor
-rail shed, ~53 ms without**.
+from `PWR_FAIL` to the converters dropping out is **~152 ms with the sensor
+rail shed, ~75 ms without**. Those two are scaled from the measured 540 µF
+result (108 / 53 ms) for the 760 µF bank that replaced it — hold-up is linear
+in C for a constant-power load over a fixed window. **Re-run
+`gen/simulate.py` to replace them with measured values**; ngspice was not
+installed when the bank changed.
 
 **Firmware contract:** on `PWR_FAIL` rising — drop `SENS_EN`, stop sampling,
 flush and close the file, then idle. Do not start a new write while
@@ -180,8 +186,8 @@ firmware's job.
 
 The firmware that spends it now exists and has been run against that window
 (§10, *Firmware in the loop*). Measured: the file is closed **31 ms** after
-`PWR_FAIL`, leaving 76 ms of the bank unspent, and the card may take up to a
-**~90 ms** flush before the close no longer fits. That is roughly five times a
+`PWR_FAIL`, leaving 121 ms of the bank unspent, and the card may take up to a
+**~130 ms** flush before the close no longer fits. That is roughly seven times a
 healthy card's latency but it is a limit, not unlimited protection — a card
 that stalls for longer than that still loses the file.
 
@@ -229,9 +235,15 @@ AINn_IN ──[1k series]──┬─────────[10k]────�
 
 | RANGE | BYPASS | Input range | Ratio | At the ADC | Clips at | Typical sensor |
 |---|---|---|---|---|---|---|
+| **A** | open | **0–5.0 V — ships like this** | 0.5769 | 2.885 V at 5.0 V in | 5.37 V in | MAP, TPS, wideband AFR, most 5 V sensors |
 | open | **closed** | 0–3.3 V | 1.0000 | 3.300 V at 3.3 V in | 3.10 V in | 3.3 V-native sensor, ratiometric output |
-| **A** | open | 0–5.0 V | 0.5769 | 2.885 V at 5.0 V in | 5.37 V in | MAP, TPS, wideband AFR, most 5 V sensors |
 | **B** | open | 0–16 V | 0.1673 | 2.677 V at 16.0 V in | 18.53 V in | Battery-referenced signals, 12 V switch inputs |
+
+**All four channels ship in the 0–5 V position** — `RANGE` bridged 1–2,
+`BYPASS` open — because that is what almost every automotive sensor is, and
+because it means the firmware's `DIVIDER_GAIN` matches the board as delivered
+rather than assuming a jumper somebody has to remember to fit. Cut the 1–2
+bridge to move a channel to either of the other two rows.
 
 The upper leg is the 1 k series resistor plus the 10 k, so 11 k against 15 k
 gives 15/26 = 0.5769 on the 5 V range and 2.21/13.21 = 0.1673 on the 16 V one.
@@ -292,9 +304,13 @@ Bus side, in order from the transceiver out:
   ground at the midpoint. Split termination beats a single 120 Ω resistor
   because it gives the common-mode noise somewhere to go instead of
   reflecting it.
-- `JP1` in series with the top half — **bridged by default**, matching the
-  Autosport Labs convention of shipping terminated. Cut the trace when the
-  board is a mid-bus node rather than an end node.
+- `JP1` in series with the top half — **open by default: the board ships
+  unterminated**. Bridge the pads only when this board is an end node on a bus
+  of its own. Every vehicle bus, OBD-II diagnostics included, is already
+  terminated at both ends, and a third 120 Ω across the pair takes it to about
+  40 Ω and can stop it working. This deliberately departs from the Autosport
+  Labs convention of shipping terminated, because the common case here is
+  plugging into a car that is already correct.
 - `D6`/`D7` SMAJ26CA bidirectional clamps to ground on each line.
 
 CAN_H/CAN_L run to `J1` pins 3 and 4, so one 4-pin JST-PH carries power and bus
@@ -312,10 +328,11 @@ to `J1.2`, pin 6 to `J1.3`, pin 14 to `J1.4` — so one cable both powers the
 board and connects it to the bus. What is left is software: ISO-TP
 (ISO 15765-2) segmentation and whichever of UDS or KWP2000 the target speaks.
 
-> **Cut `JP1` before plugging into a vehicle.** The board ships terminated
-> (§4), and a car's D-CAN is already terminated at both ends. A third 120 Ω
-> across the pair drops the bus to ~40 Ω and can stop it working entirely.
-> Termination is for a bench bus where this board is an end node. Note also
+> **Termination is already off.** `JP1` ships open (§4), which is what a
+> vehicle bus wants — it is already terminated at both ends, and a third
+> 120 Ω across the pair drops it to ~40 Ω and can stop it working entirely.
+> So there is nothing to cut before plugging into a car; bridge `JP1` only
+> for a bench bus where this board is an end node. Note also
 > that `CAN_S` (GPIO21) lets firmware pick listen-only for sniffing, so the
 > board need never ACK a bus it is only observing.
 
@@ -740,7 +757,7 @@ and the ferrite swallow them and the TVS absorbs a measured 0 J.
 **What it flags.**
 
 1. **Pulse 1 still browns the board out, now for ~5.6 ms.** A -100 V, 2 ms
-   transient turns Q1 off, and the board runs on the 540 uF bank at full
+   transient turns Q1 off, and the board runs on the 760 uF bank at full
    load until the harness recovers. The ride-through caps shrank the outage
    from 8.2 ms but cannot absorb it: the pulse actively holds the harness
    at -47 V for 2 ms, and the bank spends most of its charge riding that
@@ -781,10 +798,11 @@ and the ferrite swallow them and the TVS absorbs a measured 0 J.
 
 **Second-round studies** (also in `gen/simulate.py`):
 
-- **Battery-connect inrush**: the 540 µF bank charges through Q1's body diode
-  before the LM74700 wakes — 42 A peak, but only 0.20 A²s of surge and 8 mJ
-  in the diode. A 2 A nano fuse is specified around 1 A²s; verify the exact
-  figure on the datasheet at order, but the margin is ~5×.
+- **Battery-connect inrush**: the 760 µF bank charges through Q1's body diode
+  before the LM74700 wakes — 42 A peak, and 0.28 A²s of surge (0.20 A²s
+  measured at 540 µF, scaled: the fuse's I²t burden is linear in C, which is
+  the price of the bigger bank). A 2 A nano fuse is specified around 1 A²s; verify the exact
+  figure on the datasheet at order, but the margin is ~3.6×.
 - **Engine crank (ISO 16750-2 profile)**: warm (6.0 V dip) and cold (4.5 V
   dip, 15 ms) both ride through — the bank carries the bottom of the dip and
   the 6.5 V starter plateau sits above the converters' dropout. `PWR_FAIL`
@@ -857,8 +875,8 @@ Plus the power-fail contract above, which that board has no signal for.
 those fixed, plus SD logging and the `PWR_FAIL` path. It passes all 31 checks.
 Study 11 is what sized the shutdown: it swept card latency and caught a
 redundant `flush()` before `close()` in the shutdown path — two full card
-writes instead of one — which had cut the tolerable card latency from ~90 ms
-to ~50 ms. `sim/firmware.png` plots the shift light tracking CAN and the
+writes instead of one — which had cut the tolerable card latency roughly in
+half. `sim/firmware.png` plots the shift light tracking CAN and the
 ignition-off sequence.
 
 ### External DFT review
@@ -893,7 +911,7 @@ Part #`), and BOM/CPL designators are machine-verified to agree. 21 lines
 carry verified LCSC numbers; 39 blank lines are plain 0805/1206 R/C that
 JLC's order flow auto-matches from value + package. **Twelve extended lines
 must be matched by hand in the order UI** (search the Comment, pick the
-stocked equivalent): the 220 uF/100 V and 100 uF/100 V electrolytics, the
+stocked equivalent): the 330 uF/100 V and 100 uF/100 V electrolytics, the
 green LED, PMEG4010, the 0466 2 A fuse, both Wurth beads, the Sunlord 22 uH,
 DMG2301L, the TL3342 buttons, TLV431ASN1T1G and SN74AHCT1G125. Never guess a
 C-number into the file -- a wrong part number assembles the wrong part.
@@ -1007,8 +1025,9 @@ should read high once the rails are up. The full map is `TP1` PG_5V, `TP2`
 PG_3V3, `TP3` +VBAT, `TP4` +5V, `TP5` +3V3, `TP6` +5VS, `TP7` GND, `TP8`
 SD_CLK, `TP9` SD_CMD, `TP10` CAN_H, `TP11` CAN_L.) If a rail is wrong or the supply
 hits its limit, nothing is damaged. Then set the jumpers for your sensors
-per the table in §3 — they ship open, which is the 0–3.3 V range with the
-10 kΩ in circuit.
+per the table in §3 if you need something other than the default. The `RANGE`
+jumpers ship **bridged 1-2, the 0–5 V range**, which is what almost every
+automotive sensor wants and what the firmware's `DIVIDER_GAIN` assumes.
 
 ### This board has never been fabricated
 

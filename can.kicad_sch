@@ -845,7 +845,7 @@
 		)
 		(embedded_fonts no)
 	)
-	(symbol "Jumper:SolderJumper_2_Bridged"
+	(symbol "Jumper:SolderJumper_2_Open"
 		(pin_numbers
 			(hide yes)
 		)
@@ -864,7 +864,7 @@
 				)
 			)
 		)
-		(property "Value" "SolderJumper_2_Bridged"
+		(property "Value" "SolderJumper_2_Open"
 			(at 0 -2.54 0)
 			(effects
 				(font
@@ -890,7 +890,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "Solder Jumper, 2-pole, closed/bridged"
+		(property "Description" "Solder Jumper, 2-pole, open"
 			(at 0 0 0)
 			(effects
 				(font
@@ -908,7 +908,7 @@
 				(hide yes)
 			)
 		)
-		(property "ki_fp_filters" "SolderJumper*Bridged*"
+		(property "ki_fp_filters" "SolderJumper*Open*"
 			(at 0 0 0)
 			(effects
 				(font
@@ -917,18 +917,7 @@
 				(hide yes)
 			)
 		)
-		(symbol "SolderJumper_2_Bridged_0_1"
-			(rectangle
-				(start -0.508 0.508)
-				(end 0.508 -0.508)
-				(stroke
-					(width 0)
-					(type default)
-				)
-				(fill
-					(type outline)
-				)
-			)
+		(symbol "SolderJumper_2_Open_0_1"
 			(polyline
 				(pts
 					(xy -0.254 1.016) (xy -0.254 -1.016)
@@ -1002,7 +991,7 @@
 				)
 			)
 		)
-		(symbol "SolderJumper_2_Bridged_1_1"
+		(symbol "SolderJumper_2_Open_1_1"
 			(pin passive line
 				(at -3.81 0 0)
 				(length 2.54)
@@ -2140,22 +2129,22 @@
       )
     )
   )
-  (symbol (lib_id "Jumper:SolderJumper_2_Bridged") (at 100.33 38.1 270) (unit 1)
+  (symbol (lib_id "Jumper:SolderJumper_2_Open") (at 100.33 38.1 270) (unit 1)
     (in_bom yes) (on_board yes) (dnp no)
     (uuid 80ef2183-6a0c-5655-8a81-5dfddb973d16)
     (property "Reference" "JP1" (at 101.6 36.83 90)
       (effects (font (size 1.27 1.27)) (justify left) )
     )
-    (property "Value" "TERM (default ON)" (at 101.6 39.88 90)
+    (property "Value" "TERM (default OFF)" (at 101.6 39.88 90)
       (effects (font (size 1.27 1.27)) (justify left) )
     )
-    (property "Footprint" "Jumper:SolderJumper-2_P1.3mm_Bridged_Pad1.0x1.5mm" (at 101.6 39.88 90)
+    (property "Footprint" "Jumper:SolderJumper-2_P1.3mm_Open_Pad1.0x1.5mm" (at 101.6 39.88 90)
       (effects (font (size 1.27 1.27)) (justify left) hide)
     )
     (property "Datasheet" "~" (at 101.6 39.88 90)
       (effects (font (size 1.27 1.27)) (justify left) hide)
     )
-    (property "Note" "Cut the trace to remove the 120 ohm termination on a mid-bus node" (at 101.6 39.88 90)
+    (property "Note" "Ships OPEN: unterminated. Bridge the pads only when this board is an END node on its own bus. A vehicle's bus -- OBD-II diagnostics included -- is already terminated at both ends, and a third 120 ohm across the pair takes it to about 40 ohm and can stop it working. Defaulting terminated made that an easy mistake to make" (at 101.6 39.88 90)
       (effects (font (size 1.27 1.27)) (justify left) hide)
     )
     (pin "1" (uuid 6af946eb-3810-5cfa-87ff-9ffb3790b043))

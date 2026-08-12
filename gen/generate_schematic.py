@@ -407,6 +407,7 @@ SOT233 = "Package_TO_SOT_SMD:SOT-23"   # TLV431 is a 3-pin SOT-23
 SJ2 = "Jumper:SolderJumper-2_P1.3mm_Open_Pad1.0x1.5mm"
 SJ2B = "Jumper:SolderJumper-2_P1.3mm_Bridged_Pad1.0x1.5mm"
 SJ3 = "Jumper:SolderJumper-3_P1.3mm_Open_Pad1.0x1.5mm"
+SJ3B12 = "Jumper:SolderJumper-3_P1.3mm_Bridged12_Pad1.0x1.5mm"
 TP = "TestPoint:TestPoint_Pad_D1.5mm"
 MH = "MountingHole:MountingHole_3.2mm_M3"
 
@@ -551,18 +552,28 @@ C(pw, "100nF 100V", "+VBAT", "GND", note="HF bypass")
 # Energy is 0.5*C*(V^2 - Vmin^2), so it belongs here on +VBAT rather than on
 # a 3.3V rail: the same capacitance is worth fifteen times as much at 12 V as
 # it is at 3.3 V. From 12 V (the low end of a healthy battery) down to the
-# 7 V the converters stop regulating at, 540 uF holds 25.6 mJ.
+# 7 V the converters stop regulating at, 760 uF holds 36.1 mJ.
+#
+# 760 uF (100 + 2 x 330), not 540: the 16x22 can has the same land pattern as
+# the 16x17.5 it replaces, so the extra 220 uF is free in copper. It is not
+# free in inrush -- charging the bank through Q1's body diode gives the fuse
+# an I2t burden proportional to C, so the 2 A nano fuse's margin drops from
+# about 5x to about 3.6x. Still comfortable, but it is the number to watch if
+# the bank ever grows again (gen/simulate.py, inrush study).
 #
 # 100 V rated, not 63 V: D1 clamps at 64.5 V and the declared input window
 # already goes to 36 V.
 for _ in range(2):
-    C(pw, "220uF 100V", "+VBAT", "GND",
-      fp="Capacitor_SMD:CP_Elec_16x17.5", polarized=True,
+    C(pw, "330uF 100V", "+VBAT", "GND",
+      fp="Capacitor_SMD:CP_Elec_16x22", polarized=True,
       note="Power-fail ride-through. With the sensor rail shed and the LEDs "
            "off the board draws about 0.35 W here, so the bank holds the "
-           "rails up for roughly 70 ms -- enough to finish the block in "
-           "flight and close the file. Any 220uF >=80V on a 16x17.5 land "
-           "works; match in the JLC catalogue at order. Pin 1 is +")
+           "rails up long enough to finish the block in flight and close the "
+           "file. 16x22 rather than 16x17.5: the two footprints are identical "
+           "in every copper and courtyard layer -- only the can is 4.5 mm "
+           "taller -- so the extra 220 uF costs nothing but enclosure height. "
+           "Any 330uF >=80V on a 16 mm land works; match in the JLC catalogue "
+           "at order. Pin 1 is +")
 
 # ---- power-fail detect ---------------------------------------------------
 # Sensed on VBAT_F, ahead of Q1, which is the whole point: when the ignition
@@ -975,9 +986,13 @@ part(cn, "L", "Device:L_Coupled", "51uH", "esp32autosport:L_CommonMode_TDK_ACT45
      "TDK ACT45B-510-2P-TL003",
      "AEC-Q200 CAN choke; footprint pads renumbered so symbol winding 1-2 is "
      "the package's top (1-4) winding", lcsc="C76584")
-part(cn, "JP", "Jumper:SolderJumper_2_Bridged", "TERM (default ON)", SJ2B,
+part(cn, "JP", "Jumper:SolderJumper_2_Open", "TERM (default OFF)", SJ2,
      {"1": "CAN_H", "2": "TERM_A"},
-     note="Cut the trace to remove the 120 ohm termination on a mid-bus node")
+     note="Ships OPEN: unterminated. Bridge the pads only when this board is "
+          "an END node on its own bus. A vehicle's bus -- OBD-II diagnostics "
+          "included -- is already terminated at both ends, and a third 120 "
+          "ohm across the pair takes it to about 40 ohm and can stop it "
+          "working. Defaulting terminated made that an easy mistake to make")
 R(cn, "60.4", "TERM_A", "CAN_SPLIT", note="Split termination upper half")
 R(cn, "60.4", "CAN_SPLIT", "CAN_L", note="Split termination lower half")
 C(cn, "4.7nF 50V", "CAN_SPLIT", "GND", note="Split-termination common-mode stabiliser")
@@ -1021,9 +1036,13 @@ for n in range(1, 5):
     part(an, "JP", "Jumper:SolderJumper_2_Open", "BYPASS%d" % n, SJ2,
          {"1": node, "2": out},
          note="Close for a raw 0-3.3V sensor (shorts the upper leg)")
-    part(an, "JP", "Jumper:SolderJumper_3_Open", "RANGE%d" % n, SJ3,
+    part(an, "JP", "Jumper:SolderJumper_3_Bridged12", "RANGE%d (default 0-5V)" % n, SJ3B12,
          {"2": out, "1": "AIN%d_R1" % n, "3": "AIN%d_R2" % n},
-         note="C-A = 0-5V range, C-B = 0-16V range, both open = no divider")
+         note="Ships BRIDGED 1-2 = the 0-5V range, which is what almost every "
+              "automotive sensor is. Cut 1-2 and bridge 2-3 for 0-16V; cut "
+              "1-2 and leave both open for no divider (then close BYPASS%d "
+              "for a raw 0-3.3V sensor). Defaulting to 0-5V also means the "
+              "firmware's DIVIDER_GAIN matches the board as shipped" % n)
     R(an, "15k 0.1%", "AIN%d_R1" % n, "GND",
       note="0-5V range: 5.0V in -> ~2.88V at the ADC (1k series included); "
            "exact scale is a firmware calibration constant")

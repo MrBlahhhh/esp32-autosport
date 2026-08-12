@@ -114,7 +114,7 @@ def channel(n):
             # A solder jumper is already horizontal at 0 -- unlike Device:R,
             # which needs 90 to lie down.
             ("BYPASS%d" % n, {a, ain},       26.67,   7.62,   0),
-            ("RANGE%d" % n, {r1, ain, r2},   40.64,  10.16, 180),
+            ("RANGE%d (default 0-5V)" % n, {r1, ain, r2},   40.64,  10.16, 180),
             ("15k",        {r1, "GND"},      45.72,  19.05,   0),
             ("2.21k",      {r2, "GND"},      35.56,  19.05,   0),
             ("100nF",      {ain, "GND"},     55.88,   3.81,   0),
@@ -308,8 +308,8 @@ FRONTEND = {
         ("100nF",    {"+VBAT", "GND"},                   27.94, -31.75,   0),
         # The ride-through bank lives on this same rail; drawn anywhere
         # else the two cans read as orphans.
-        ("220uF",    {"+VBAT", "GND"},                   40.64, -31.75,   0),
-        ("220uF",    {"+VBAT", "GND"},                   48.26, -31.75,   0),
+        ("330uF",    {"+VBAT", "GND"},                   40.64, -31.75,   0),
+        ("330uF",    {"+VBAT", "GND"},                   48.26, -31.75,   0),
         ("+VBAT",    {"+VBAT"},                           55.88, -35.56,   0),
     ],
     "wires": [
@@ -366,7 +366,7 @@ CAN = {
                                                          25.40,   0.00,   0),
         ("SMAJ26CA", {"CAN_H", "GND"},                   43.18,  -8.89, 270),
         ("SMAJ26CA", {"CAN_L", "GND"},                   43.18,  24.13, 270),
-        ("TERM (default ON)", {"CAN_H", "TERM_A"},       53.34,  -8.89, 270),
+        ("TERM (default OFF)", {"CAN_H", "TERM_A"},       53.34,  -8.89, 270),
         ("60.4",   {"TERM_A", "CAN_SPLIT"},              53.34,   1.27,   0),
         ("60.4",   {"CAN_SPLIT", "CAN_L"},               53.34,  12.70,   0),
         ("4.7nF",  {"CAN_SPLIT", "GND"},                 60.96,   8.89,   0),

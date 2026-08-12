@@ -75,8 +75,11 @@ unsigned long canFrames = 0;      // frames since the last status line
 // wideband, and the gain below MUST match the jumper actually fitted:
 //
 //   RANGE open, BYPASS closed   0–3.3 V   ratio 1.0000   gain 1.0000
-//   RANGE A,    BYPASS open     0–5.0 V   ratio 0.5769   gain 1.7334  <- fitted
+//   RANGE A,    BYPASS open     0–5.0 V   ratio 0.5769   gain 1.7334  <- default
 //   RANGE B,    BYPASS open     0–16 V    ratio 0.1673   gain 5.9773
+//
+// The RANGE jumper now ships BRIDGED 1-2 (0–5 V), so this constant matches a
+// board straight out of the box. Change it only if you cut that bridge.
 //
 // This is the constant that was wrong on the first port: 2.0 is the reciprocal
 // of the R53 board's 10k/10k, and using it here reads 17 % high all the way up

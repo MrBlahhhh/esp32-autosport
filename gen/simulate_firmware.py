@@ -660,7 +660,7 @@ def study_flush_margin(exes):
     print("    %10s %12s %14s" % ("flush time", "outcome", "closed at"))
     last_ok = None
     first_bad = None
-    for flush_ms in (18, 40, 60, 80, 90, 100, 110, 120, 200, 300):
+    for flush_ms in (18, 40, 60, 80, 100, 120, 130, 140, 150, 160, 200, 300):
         scn = f"""board autosport
 duration 2000
 trace 2

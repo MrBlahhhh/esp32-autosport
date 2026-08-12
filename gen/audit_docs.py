@@ -61,8 +61,8 @@ CLAIMS = {
     "D6": "SMAJ26CA",         # CAN_H clamp
     "D7": "SMAJ26CA",         # CAN_L clamp
     "C3": "100uF",            # bulk hold-up
-    "C6": "220uF",            # ride-through
-    "C7": "220uF",            # ride-through
+    "C6": "330uF",            # ride-through
+    "C7": "330uF",            # ride-through
     "R55": "60.4",            # split termination
     "R56": "60.4",            # split termination
     "R64": "10k",             # battery monitor, low leg

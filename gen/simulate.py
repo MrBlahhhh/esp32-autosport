@@ -219,9 +219,9 @@ Dbody  vfb vbp DBODY
 * each with its ESR, and the 10 uF / 100 nF ceramics.
 Cbulk  vbp b1 100u
 Rbulk  b1 0 0.30
-Crt1   vbp b4 220u
+Crt1   vbp b4 330u
 Rrt1   b4 0 0.15
-Crt2   vbp b5 220u
+Crt2   vbp b5 330u
 Rrt2   b5 0 0.15
 Cin1   vbp b2 10u
 Rin1   b2 0 0.005
@@ -681,7 +681,7 @@ def plot_buck(traces):
 #   -> firmware sheds the sensor rail and LEDs -> +VBAT coasts on the bank
 #   -> converters drop out at UVLO.  The usable window is detect-to-dropout.
 
-C_BANK = 540e-6        # 100 uF + 2 x 220 uF on +VBAT
+C_BANK = 760e-6        # 100 uF + 2 x 330 uF on +VBAT
 P_BOARD = 0.35         # ESP32 logging + SD write bursts, after the shed
 P_SENSORS = 0.40       # four sensors at 20 mA on +5VS, before the shed
 T_FW = 5e-3            # firmware latency from interrupt to load shed
@@ -732,9 +732,9 @@ Dbody vf vbp DBODY
 * The +VBAT bank.
 Cbulk vbp b1 100u
 Rblk  b1 0 0.30
-Cr1   vbp b2 220u
+Cr1   vbp b2 330u
 Rr1   b2 0 0.15
-Cr2   vbp b3 220u
+Cr2   vbp b3 330u
 Rr2   b3 0 0.15
 
 * Board load as constant POWER with UVLO foldback: a buck's input current
@@ -846,7 +846,7 @@ def plot_ridethru(traces):
 
 # ================================================================== inrush ===
 def inrush_deck():
-    """Battery connect into the discharged 540 uF bank.
+    """Battery connect into the discharged 760 uF bank.
 
     Until the LM74700's charge pump wakes, the inrush flows through Q1's
     body diode -- so the surge is limited only by the harness inductance,
@@ -871,9 +871,9 @@ Dbody vfb vbp DBODY
 
 Cblk  vbp b1 100u
 Rblk  b1 0 0.30
-Cr1   vbp b2 220u
+Cr1   vbp b2 330u
 Rr1   b2 0 0.15
-Cr2   vbp b3 220u
+Cr2   vbp b3 330u
 Rr2   b3 0 0.15
 Cin1  vbp b4 10u
 Rin1  b4 0 0.005
@@ -891,7 +891,7 @@ quit
 
 def sim_inrush(plots):
     head("5. Battery-connect inrush into the ride-through bank")
-    print("    540 uF charging through the harness, F1's cold resistance and")
+    print("    760 uF charging through the harness, F1's cold resistance and")
     print("    Q1's body diode (the LM74700 has not started yet).")
     fails = []
     d = run_deck("inrush", inrush_deck(), ["i(vfuse)", "v(vbp)", "v(vfb)"])
@@ -943,9 +943,9 @@ Dbody vf vbp DBODY
 
 Cblk  vbp b1 100u
 Rblk  b1 0 0.30
-Cr1   vbp b2 220u
+Cr1   vbp b2 330u
 Rr1   b2 0 0.15
-Cr2   vbp b3 220u
+Cr2   vbp b3 330u
 Rr2   b3 0 0.15
 
 Bload vbp 0 I = (0.35 / max(V(vbp), 2.0)) * (0.5 + 0.5*tanh((V(vbp) - %g)/0.3))

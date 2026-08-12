@@ -221,8 +221,8 @@ PIN_FIXED = [
     # with a 20.8 mm courtyard steamrolls a shelf packer, and split one can
     # per side because two of them do not fit abreast anywhere: the left one
     # under the front end that feeds it, the right one under the buttons.
-    ("Power", "220uF 100V", {"+VBAT", "GND"}, (20.5, 83.5, 0)),
-    ("Power", "220uF 100V", {"+VBAT", "GND"}, (72.0, 77.0, 0)),
+    ("Power", "330uF 100V", {"+VBAT", "GND"}, (20.5, 83.5, 0)),
+    ("Power", "330uF 100V", {"+VBAT", "GND"}, (72.0, 77.0, 0)),
 ]
 
 

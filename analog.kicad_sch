@@ -789,7 +789,7 @@
 		)
 		(embedded_fonts no)
 	)
-	(symbol "Jumper:SolderJumper_3_Open"
+	(symbol "Jumper:SolderJumper_3_Bridged12"
 		(pin_names
 			(offset 0)
 			(hide yes)
@@ -805,7 +805,7 @@
 				)
 			)
 		)
-		(property "Value" "SolderJumper_3_Open"
+		(property "Value" "SolderJumper_3_Bridged12"
 			(at 0 2.794 0)
 			(effects
 				(font
@@ -831,7 +831,7 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "Solder Jumper, 3-pole, open"
+		(property "Description" "3-pole Solder Jumper, pins 1+2 closed/bridged"
 			(at 0 0 0)
 			(effects
 				(font
@@ -849,7 +849,7 @@
 				(hide yes)
 			)
 		)
-		(property "ki_fp_filters" "SolderJumper*Open*"
+		(property "ki_fp_filters" "SolderJumper*Bridged12*"
 			(at 0 0 0)
 			(effects
 				(font
@@ -858,7 +858,7 @@
 				(hide yes)
 			)
 		)
-		(symbol "SolderJumper_3_Open_0_1"
+		(symbol "SolderJumper_3_Bridged12_0_1"
 			(polyline
 				(pts
 					(xy -2.54 0) (xy -2.032 0)
@@ -881,6 +881,17 @@
 				)
 				(fill
 					(type none)
+				)
+			)
+			(rectangle
+				(start -1.016 0.508)
+				(end -0.508 -0.508)
+				(stroke
+					(width 0)
+					(type default)
+				)
+				(fill
+					(type outline)
 				)
 			)
 			(arc
@@ -979,7 +990,7 @@
 				)
 			)
 		)
-		(symbol "SolderJumper_3_Open_1_1"
+		(symbol "SolderJumper_3_Bridged12_1_1"
 			(pin passive line
 				(at -5.08 0 0)
 				(length 2.54)
@@ -3057,22 +3068,22 @@
       )
     )
   )
-  (symbol (lib_id "Jumper:SolderJumper_3_Open") (at 87.63 91.44 180) (unit 1)
+  (symbol (lib_id "Jumper:SolderJumper_3_Bridged12") (at 87.63 91.44 180) (unit 1)
     (in_bom yes) (on_board yes) (dnp no)
     (uuid ef60e73e-9894-5967-917a-c6071d3e0249)
     (property "Reference" "JP4" (at 87.63 72.39 0)
       (effects (font (size 1.27 1.27)) )
     )
-    (property "Value" "RANGE1" (at 87.63 93.47 0)
+    (property "Value" "RANGE1 (default 0-5V)" (at 87.63 93.47 0)
       (effects (font (size 1.27 1.27)) )
     )
-    (property "Footprint" "Jumper:SolderJumper-3_P1.3mm_Open_Pad1.0x1.5mm" (at 87.63 93.47 0)
+    (property "Footprint" "Jumper:SolderJumper-3_P1.3mm_Bridged12_Pad1.0x1.5mm" (at 87.63 93.47 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "~" (at 87.63 93.47 0)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "Note" "C-A = 0-5V range, C-B = 0-16V range, both open = no divider" (at 87.63 93.47 0)
+    (property "Note" "Ships BRIDGED 1-2 = the 0-5V range, which is what almost every automotive sensor is. Cut 1-2 and bridge 2-3 for 0-16V; cut 1-2 and leave both open for no divider (then close BYPASS1 for a raw 0-3.3V sensor). Defaulting to 0-5V also means the firmware's DIVIDER_GAIN matches the board as shipped" (at 87.63 93.47 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (pin "1" (uuid 6f90dbad-6043-5461-b45a-3008e4777ed3))
@@ -3520,22 +3531,22 @@
       )
     )
   )
-  (symbol (lib_id "Jumper:SolderJumper_3_Open") (at 87.63 163.83 180) (unit 1)
+  (symbol (lib_id "Jumper:SolderJumper_3_Bridged12") (at 87.63 163.83 180) (unit 1)
     (in_bom yes) (on_board yes) (dnp no)
     (uuid 63d0893a-9b6e-5d83-b694-2b4956a68124)
     (property "Reference" "JP7" (at 87.63 144.78 0)
       (effects (font (size 1.27 1.27)) )
     )
-    (property "Value" "RANGE2" (at 87.63 165.86 0)
+    (property "Value" "RANGE2 (default 0-5V)" (at 87.63 165.86 0)
       (effects (font (size 1.27 1.27)) )
     )
-    (property "Footprint" "Jumper:SolderJumper-3_P1.3mm_Open_Pad1.0x1.5mm" (at 87.63 165.86 0)
+    (property "Footprint" "Jumper:SolderJumper-3_P1.3mm_Bridged12_Pad1.0x1.5mm" (at 87.63 165.86 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "~" (at 87.63 165.86 0)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "Note" "C-A = 0-5V range, C-B = 0-16V range, both open = no divider" (at 87.63 165.86 0)
+    (property "Note" "Ships BRIDGED 1-2 = the 0-5V range, which is what almost every automotive sensor is. Cut 1-2 and bridge 2-3 for 0-16V; cut 1-2 and leave both open for no divider (then close BYPASS2 for a raw 0-3.3V sensor). Defaulting to 0-5V also means the firmware's DIVIDER_GAIN matches the board as shipped" (at 87.63 165.86 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (pin "1" (uuid 10ff1c77-95b6-5577-9d5d-2160c7467cfc))
@@ -3983,22 +3994,22 @@
       )
     )
   )
-  (symbol (lib_id "Jumper:SolderJumper_3_Open") (at 87.63 236.22 180) (unit 1)
+  (symbol (lib_id "Jumper:SolderJumper_3_Bridged12") (at 87.63 236.22 180) (unit 1)
     (in_bom yes) (on_board yes) (dnp no)
     (uuid c9c2c231-37b5-596e-8ea4-9080c32b491a)
     (property "Reference" "JP10" (at 87.63 217.17 0)
       (effects (font (size 1.27 1.27)) )
     )
-    (property "Value" "RANGE3" (at 87.63 238.25 0)
+    (property "Value" "RANGE3 (default 0-5V)" (at 87.63 238.25 0)
       (effects (font (size 1.27 1.27)) )
     )
-    (property "Footprint" "Jumper:SolderJumper-3_P1.3mm_Open_Pad1.0x1.5mm" (at 87.63 238.25 0)
+    (property "Footprint" "Jumper:SolderJumper-3_P1.3mm_Bridged12_Pad1.0x1.5mm" (at 87.63 238.25 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "~" (at 87.63 238.25 0)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "Note" "C-A = 0-5V range, C-B = 0-16V range, both open = no divider" (at 87.63 238.25 0)
+    (property "Note" "Ships BRIDGED 1-2 = the 0-5V range, which is what almost every automotive sensor is. Cut 1-2 and bridge 2-3 for 0-16V; cut 1-2 and leave both open for no divider (then close BYPASS3 for a raw 0-3.3V sensor). Defaulting to 0-5V also means the firmware's DIVIDER_GAIN matches the board as shipped" (at 87.63 238.25 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (pin "1" (uuid 4c1a642d-e03e-5135-96d0-0e8ad69664f6))
@@ -4446,22 +4457,22 @@
       )
     )
   )
-  (symbol (lib_id "Jumper:SolderJumper_3_Open") (at 214.63 52.07 180) (unit 1)
+  (symbol (lib_id "Jumper:SolderJumper_3_Bridged12") (at 214.63 52.07 180) (unit 1)
     (in_bom yes) (on_board yes) (dnp no)
     (uuid 31473f81-6334-5c7c-a8ad-cfd42fe6e81a)
     (property "Reference" "JP13" (at 214.63 33.02 0)
       (effects (font (size 1.27 1.27)) )
     )
-    (property "Value" "RANGE4" (at 214.63 54.1 0)
+    (property "Value" "RANGE4 (default 0-5V)" (at 214.63 54.1 0)
       (effects (font (size 1.27 1.27)) )
     )
-    (property "Footprint" "Jumper:SolderJumper-3_P1.3mm_Open_Pad1.0x1.5mm" (at 214.63 54.1 0)
+    (property "Footprint" "Jumper:SolderJumper-3_P1.3mm_Bridged12_Pad1.0x1.5mm" (at 214.63 54.1 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "~" (at 214.63 54.1 0)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "Note" "C-A = 0-5V range, C-B = 0-16V range, both open = no divider" (at 214.63 54.1 0)
+    (property "Note" "Ships BRIDGED 1-2 = the 0-5V range, which is what almost every automotive sensor is. Cut 1-2 and bridge 2-3 for 0-16V; cut 1-2 and leave both open for no divider (then close BYPASS4 for a raw 0-3.3V sensor). Defaulting to 0-5V also means the firmware's DIVIDER_GAIN matches the board as shipped" (at 214.63 54.1 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (pin "1" (uuid 6394ea18-089c-583e-85f8-0a4773eb567d))
