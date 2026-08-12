@@ -116,11 +116,27 @@ def open_pads(unconnected):
     return out
 
 
-def tie_duplicates(board, unconnected):
-    """Jumper a connector's duplicated pins (USB-C D+ on A6/B6 etc)."""
+def plane_nets(board):
+    """Nets carried by an inner-layer pour, which need no tie of their own."""
+    inner = {pcbnew.In1_Cu, pcbnew.In2_Cu}
+    return {z.GetNetname() for z in board.Zones()
+            if not z.GetIsRuleArea() and z.GetLayer() in inner}
+
+
+def tie_duplicates(board, unconnected, skip_planes=False):
+    """Jumper a connector's duplicated pins (USB-C D+ on A6/B6 etc).
+
+    `skip_planes` is for the pass that runs before the autorouter, when DRC
+    still reports every net as open: the plane nets are about to be stitched
+    and would otherwise collect a via pair on every connector that repeats a
+    ground pin.
+    """
     rects, segs = collect(board)
+    planes = plane_nets(board) if skip_planes else set()
     made = []
     for ref, net in sorted(open_pads(unconnected)):
+        if net in planes:
+            continue
         fp = board.FindFootprintByReference(ref)
         if fp is None:
             continue
@@ -138,27 +154,40 @@ def tie_duplicates(board, unconnected):
         tie_w = SIZES.track(net)
         tie_via, tie_drill = SIZES.via(net)
         (ax, ay), (bx, by) = keys[0], keys[-1]
-        half = ToMM(a.GetBoundingBox().GetWidth()) / 2.0
+        bb = a.GetBoundingBox()
+        # Each via has to sit beside its own pad, so the escape runs across
+        # the line joining the two.  Offsetting both vias in x is only right
+        # for a stacked pair: on a side-by-side pair -- SW1 and SW2 here,
+        # whose two halves are 6.3 mm apart on the same y -- it put both
+        # vias on one point, which is a hole drilled twice and a tie that
+        # never reaches the second pad.
+        stacked = abs(bx - ax) <= abs(by - ay)
+        half = ToMM(bb.GetWidth() if stacked else bb.GetHeight()) / 2.0
         placed = False
         for step in range(14):
             off = 0.5 + 0.25 * step
             for sign in (1, -1):
-                vx = ax + sign * (half + off)
-                if not (fits(vx, ay, tie_via, net, rects, segs) and
-                        fits(vx, by, tie_via, net, rects, segs)):
+                d = sign * (half + off)
+                (vax, vay) = (ax + d, ay) if stacked else (ax, ay + d)
+                (vbx, vby) = (bx + d, by) if stacked else (bx, by + d)
+                if not (fits(vax, vay, tie_via, net, rects, segs) and
+                        fits(vbx, vby, tie_via, net, rects, segs)):
                     continue
-                if not (seg_fits(ax, ay, vx, ay, tie_w, net, rects, segs) and
-                        seg_fits(bx, by, vx, by, tie_w, net, rects, segs) and
-                        seg_fits(vx, ay, vx, by, tie_w, net, rects, segs)):
+                if not (seg_fits(ax, ay, vax, vay, tie_w, net, rects, segs) and
+                        seg_fits(bx, by, vbx, vby, tie_w, net, rects, segs) and
+                        seg_fits(vax, vay, vbx, vby, tie_w, net, rects, segs)):
                     continue
-                add_via(board, vx, ay, netinfo, tie_via, tie_drill)
-                add_via(board, vx, by, netinfo, tie_via, tie_drill)
-                add_track(board, netinfo, (ax, ay), (vx, ay), pcbnew.F_Cu, tie_w)
-                add_track(board, netinfo, (bx, by), (vx, by), pcbnew.F_Cu, tie_w)
-                add_track(board, netinfo, (vx, ay), (vx, by), pcbnew.B_Cu, tie_w)
-                for x, y in ((vx, ay), (vx, by)):
+                add_via(board, vax, vay, netinfo, tie_via, tie_drill)
+                add_via(board, vbx, vby, netinfo, tie_via, tie_drill)
+                add_track(board, netinfo, (ax, ay), (vax, vay),
+                          pcbnew.F_Cu, tie_w)
+                add_track(board, netinfo, (bx, by), (vbx, vby),
+                          pcbnew.F_Cu, tie_w)
+                add_track(board, netinfo, (vax, vay), (vbx, vby),
+                          pcbnew.B_Cu, tie_w)
+                for x, y in ((vax, vay), (vbx, vby)):
                     rects.append((x, y, tie_via, tie_via, net))
-                segs.append((vx, ay, vx, by, tie_w, net))
+                segs.append((vax, vay, vbx, vby, tie_w, net))
                 made.append("%s [%s]" % (ref, net))
                 placed = True
                 break
@@ -234,13 +263,21 @@ def close_gaps(board, unconnected):
 
 
 def main():
+    # The tie between a connector's repeated pins is structural: there is
+    # exactly one corridor beside the pad column it can use, and once the
+    # autorouter has filled that corridor with signals the tie cannot be
+    # made at all -- which is how J2's second VBUS pad came to be left open
+    # on a board that was otherwise fully routed. Running --early puts the
+    # tie down first so the router has to work around it, the same bargain
+    # gen/route_bucks.py strikes for the switching loops.
+    early = "--early" in sys.argv
     print("asking DRC what is still open…")
     violations, unconnected = drc(BOARD_PATH)
     print("violations   : %d" % len(violations))
     print("unconnected  : %d" % len(unconnected))
 
     board = pcbnew.LoadBoard(BOARD_PATH)
-    made = tie_duplicates(board, unconnected)
+    made = tie_duplicates(board, unconnected, skip_planes=early)
     if made:
         print("duplicate-pin ties: %s" % ", ".join(made))
         pcbnew.ZONE_FILLER(board).Fill(board.Zones())

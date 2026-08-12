@@ -71,7 +71,13 @@ WINDOW = 13.0         # search margin around the two endpoints, mm
 ORTH, DIAG, VIA_COST = 10, 14, 90    # Dijkstra step costs
 MAX_RIP = 7           # how many blocking nets to tear out at once
 RIP_LIMIT = 6         # times one net may be torn up before it is left alone
-PASSES = 40           # one connection per pass, so allow plenty
+PASSES = 100          # one connection per pass, so allow plenty.  40 was
+                      # not plenty: runs kept finishing sitting on the
+                      # limit with connections still open.  The stall check
+                      # in main() stops early when there is genuinely no
+                      # headway left, so a higher ceiling costs nothing on
+                      # a board that converges and buys the ones that do
+                      # not the passes they need.
 
 F, B = 0, 1
 LAYER_OF = {F: pcbnew.F_Cu, B: pcbnew.B_Cu}

@@ -25,7 +25,10 @@ PROJ = os.path.abspath(os.path.join(HERE, ".."))
 BOARD_PATH = os.path.join(PROJ, "esp32s3-can-sd-logger.kicad_pcb")
 
 POWER_NETS = {"SW_5V", "SW_3V3", "+VBAT", "+5V", "+3V3", "BST_5V", "BST_3V3"}
-W_PWR, W_SW = 0.45, 0.50
+W_PWR, W_SW = 0.55, 0.60   # IPC-2221 wants 0.516 mm for 2 A at a 20 C
+                           # rise on an outer layer; 0.55 clears it with
+                           # margin and 0.60 keeps the SW loop the widest
+                           # copper in the island
 
 
 def mm(v):
@@ -40,8 +43,16 @@ def pad_nets(fp):
     return frozenset(p.GetNetname() for p in fp.Pads() if p.GetNetname())
 
 
-def find(board, value=None, nets=None):
-    """The footprint matching a value and/or exact pad-net signature."""
+def find(board, value=None, nets=None, near=None):
+    """The footprint matching a value and/or exact pad-net signature.
+
+    Both bucks carry an identical input pair -- same value, same two nets --
+    so value plus net signature no longer names one part.  `near` breaks the
+    tie by picking the closest to a point, which is how the two islands
+    differ: each pair sits beside its own VIN pin.  Without `near` the match
+    still has to be unique, so a genuine ambiguity is an error rather than
+    an arbitrary pick.
+    """
     hits = []
     for fp in board.GetFootprints():
         if value is not None and fp.GetValue() != value:
@@ -49,6 +60,11 @@ def find(board, value=None, nets=None):
         if nets is not None and pad_nets(fp) != frozenset(nets):
             continue
         hits.append(fp)
+    if not hits:
+        raise SystemExit("no match for value=%r nets=%r" % (value, nets))
+    if near is not None:
+        return min(hits, key=lambda fp: (ToMM(fp.GetPosition().x) - near[0]) ** 2
+                   + (ToMM(fp.GetPosition().y) - near[1]) ** 2)
     if len(hits) != 1:
         raise SystemExit("expected exactly one match for value=%r nets=%r, "
                          "got %d" % (value, nets, len(hits)))
@@ -61,6 +77,16 @@ def pad_xy(fp, num):
             p = pad.GetPosition()
             return ToMM(p.x), ToMM(p.y)
     raise KeyError("%s.%s" % (fp.GetReference(), num))
+
+
+def pad_on(fp, netname):
+    """Where `fp` presents `netname`.  Pad numbering on a two-pad part
+    depends on the footprint's rotation, so ask for the net, not for pad 1."""
+    for pad in fp.Pads():
+        if pad.GetNetname() == netname:
+            p = pad.GetPosition()
+            return ToMM(p.x), ToMM(p.y)
+    raise KeyError("%s has no %s pad" % (fp.GetReference(), netname))
 
 
 def net(board, name):
@@ -110,8 +136,6 @@ def route(board):
     u3 = find(board, value="LM5164 (3V3)")
     l1 = find(board, nets={"SW_5V", "+5V"})
     l2 = find(board, nets={"SW_3V3", "+3V3"})
-    c_hf = find(board, value="100nF", nets={"+VBAT", "GND"})  # input HF bypass
-    c_in = find(board, value="10uF", nets={"+VBAT", "GND"})   # input bulk bypass
 
     n_sw5 = net(board, "SW_5V")
     n_sw3 = net(board, "SW_3V3")
@@ -120,25 +144,40 @@ def route(board):
     add_track(board, n_sw5, *pad_xy(u2, "8"), *pad_xy(l1, "1"), W_SW)
     add_track(board, n_sw3, *pad_xy(u3, "8"), *pad_xy(l2, "1"), W_SW)
 
+    # Each converter owns an input pair beside its own VIN pin.  Which pair
+    # is whose is decided by distance to that pin, not by reference, so the
+    # two islands stay independent through a renumbering.
+    v5, v3 = pad_xy(u2, "2"), pad_xy(u3, "2")
+    hf5 = find(board, value="100nF", nets={"+VBAT", "GND"}, near=v5)
+    bk5 = find(board, value="10uF", nets={"+VBAT", "GND"}, near=v5)
+    hf3 = find(board, value="100nF", nets={"+VBAT", "GND"}, near=v3)
+    bk3 = find(board, value="10uF", nets={"+VBAT", "GND"}, near=v3)
+    if hf5 is hf3 or bk5 is bk3:
+        raise SystemExit("both bucks claimed the same input cap -- BUCK_FIXED "
+                         "in generate_pcb.py is missing a pair")
+
     # VIN pin -> HF cap -> bulk cap, approaching the cap pads on their own X
     # so the trace does not cross the caps' GND pads.
-    u_vin = pad_xy(u2, "2")
-    hf = pad_xy(c_hf, "1")
-    add_track(board, n_vin, *u_vin, hf[0], u_vin[1], W_PWR)
-    add_track(board, n_vin, hf[0], u_vin[1], *hf, W_PWR)
-    blk = pad_xy(c_in, "1")
-    add_track(board, n_vin, *hf, *blk, W_PWR)
+    for u, hf, bk in ((u2, hf5, bk5), (u3, hf3, bk3)):
+        u_vin = pad_xy(u, "2")
+        h = pad_on(hf, "+VBAT")
+        add_track(board, n_vin, *u_vin, h[0], u_vin[1], W_PWR)
+        add_track(board, n_vin, h[0], u_vin[1], *h, W_PWR)
+        add_track(board, n_vin, *h, *pad_on(bk, "+VBAT"), W_PWR)
 
-    # Vertical +VBAT drop to the 3V3 buck on B.Cu, leaving the bulk input
-    # cap downward between the RON/FB resistor rows so nothing is skimmed.
-    u3_vin = pad_xy(u3, "2")
-    wa = (blk[0], blk[1] + 1.65)
-    wb = (blk[0], u3_vin[1] - 0.8)
-    add_track(board, n_vin, *blk, *wa, W_PWR)
+    # The two islands are tied by a +VBAT drop on B.Cu, leaving the 5 V
+    # bulk cap downward and arriving above the 3V3 HF cap, so the run stays
+    # clear of the RON/FB resistor rows between them.
+    b5 = pad_on(bk5, "+VBAT")
+    h3 = pad_on(hf3, "+VBAT")
+    wa = (b5[0], b5[1] + 1.65)
+    wb = (h3[0], h3[1] - 1.65)
+    add_track(board, n_vin, *b5, *wa, W_PWR)
     add_via(board, n_vin, *wa)
-    add_track(board, n_vin, *wa, *wb, W_PWR, B_Cu)
+    add_track(board, n_vin, *wa, wa[0], wb[1], W_PWR, B_Cu)
+    add_track(board, n_vin, wa[0], wb[1], *wb, W_PWR, B_Cu)
     add_via(board, n_vin, *wb)
-    add_track(board, n_vin, *wb, *u3_vin, W_PWR)
+    add_track(board, n_vin, *wb, *h3, W_PWR)
 
 
 def main():

@@ -10,6 +10,7 @@ without installing KiCad:
   plots/schematic.pdf     every sheet, in hierarchy order
   plots/board-routed.png  raytraced render of the assembled board, top
   plots/board-back.png    the same board from below
+  plots/board-iso.png     from an angle, where the tall parts have height
 
 These went stale once -- the committed render still showed the USB-C facing
 the wrong way two commits after it had been turned round -- so this exists to
@@ -78,7 +79,20 @@ def main():
               "--output", os.path.join(PLOTS, "board-back.png")]
         + common + [PCB], "board-back.png")
 
-    for name in ("schematic.pdf", "board-routed.png", "board-back.png"):
+    # Straight down, the tall parts are circles.  From an angle the harness
+    # connectors, the USB-C and the electrolytic have height, and anything
+    # facing the wrong way or overhanging an edge shows up as a shape rather
+    # than as a footprint you have to already know is wrong.
+    # The rotate value needs its own quotes INSIDE the argument
+    # ("'-30,0,25'"): bare or =-joined, kicad-cli reads the leading minus
+    # as an option and prints its help instead of rendering.
+    run(cli, ["pcb", "render", "--side", "top", "--rotate", "'-30,0,25'",
+              "--floor",
+              "--output", os.path.join(PLOTS, "board-iso.png")]
+        + common + [PCB], "board-iso.png")
+
+    for name in ("schematic.pdf", "board-routed.png", "board-back.png",
+                 "board-iso.png"):
         path = os.path.join(PLOTS, name)
         print("  %-18s %8.1f kB" % (name, os.path.getsize(path) / 1024.0))
     return 0

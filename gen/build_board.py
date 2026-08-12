@@ -9,20 +9,22 @@ Stages, in order:
 
   1. generate_pcb.py    place every part, draw the outline and planes
   2. route_bucks.py     hand-shaped routing for the two buck power loops
-  3. stitch_planes.py   a via from every GND / +3V3 pad to its plane
-  4. export_dsn.py      Specctra export with In1/In2 marked as power planes
-  5. freerouting        route the remaining signals on F.Cu / B.Cu
-  6. import_ses.py      bring the routes back and refill the pours
-  7. finish_routing.py  tie duplicated connector pins, report leftovers
-  8. maze_route.py      rip up and re-route whatever is still open
-  9. tidy_silk.py       shrink and shuffle the reference designators
+  3. finish_routing.py  tie duplicated connector pins, before anything else
+                        can take the one corridor those ties can use
+  4. stitch_planes.py   a via from every GND / +3V3 pad to its plane
+  5. export_dsn.py      Specctra export with In1/In2 marked as power planes
+  6. freerouting        route the remaining signals on F.Cu / B.Cu
+  7. import_ses.py      bring the routes back and refill the pours
+  8. finish_routing.py  a second go at any tie the router undid
+  9. maze_route.py      rip up and re-route whatever is still open
+ 10. tidy_silk.py       shrink and shuffle the reference designators
 
-Stage 8 is what finishes the board.  An autorouter routes the easy nets
+Stage 9 is what finishes the board.  An autorouter routes the easy nets
 first and fences the awkward ones in, and the last few connections are
 not hard because they are long -- they are hard because something is
-parked in the only way out.  Stage 9 touches no copper.
+parked in the only way out.  Stage 10 touches no copper.
 
-Stages 1-4 and 6-9 need KiCad's bundled Python for pcbnew, so this driver
+Stages 1-5 and 7-10 need KiCad's bundled Python for pcbnew, so this driver
 re-invokes them with that interpreter; run the driver itself with any
 Python 3.  Freerouting needs Java.  Without --freerouting it looks for
 freerouting.jar next to the project and in the current directory, and
@@ -118,6 +120,8 @@ def main():
 
     run([py, os.path.join(HERE, "generate_pcb.py")], "place parts")
     run([py, os.path.join(HERE, "route_bucks.py")], "buck power loops")
+    run([py, os.path.join(HERE, "finish_routing.py"), "--early"],
+        "tie duplicated connector pins")
     run([py, os.path.join(HERE, "stitch_planes.py")], "plane vias")
 
     if args.skip_route:

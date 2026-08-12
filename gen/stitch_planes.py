@@ -61,6 +61,40 @@ def dist_point_seg(px, py, x1, y1, x2, y2):
     return math.hypot(px - (x1 + t * vx), py - (y1 + t * vy))
 
 
+HOLE_GAP = 0.4        # edge to edge between two drilled holes
+
+
+def collect_holes(board):
+    """Every drilled hole on the board as (x, y, radius), in mm.
+
+    Copper on one net may touch copper on the same net, which is why fits()
+    skips same-net obstacles.  Drills may not: two holes tangent to each other
+    are one torn slot whatever nets they are on, and DRC's hole-to-hole rule
+    only compares different nets, so it passes them.  A stitching via landed
+    exactly tangent to J2's shield pad that way.
+    """
+    holes = []
+    for fp in board.GetFootprints():
+        for pad in fp.Pads():
+            d = ToMM(pad.GetDrillSize().x)
+            if d > 0:
+                p = pad.GetPosition()
+                holes.append((ToMM(p.x), ToMM(p.y), d / 2.0))
+    for t in board.GetTracks():
+        if isinstance(t, PCB_VIA):
+            p = t.GetPosition()
+            holes.append((ToMM(p.x), ToMM(p.y), ToMM(t.GetDrill()) / 2.0))
+    return holes
+
+
+def hole_fits(x, y, drill, holes):
+    r = drill / 2.0
+    for hx, hy, hr in holes:
+        if math.hypot(x - hx, y - hy) < r + hr + HOLE_GAP:
+            return False
+    return True
+
+
 def collect(board):
     """Obstacles as geometry, in mm, with the net they belong to."""
     rects, segs = [], []
@@ -139,6 +173,7 @@ def main():
     y_lo, y_hi = ToMM(box.GetTop()) + EDGE_KEEP, ToMM(box.GetBottom()) - EDGE_KEEP
 
     rects, segs = collect(board)
+    holes = collect_holes(board)
 
     # Pads that already sit on a plane layer, or already have a via touching
     # them, need nothing.
@@ -191,6 +226,8 @@ def main():
                         continue
                     if not fits(cx, cy, dia, net, rects, segs):
                         continue
+                    if not hole_fits(cx, cy, drill, holes):
+                        continue
                     if not seg_fits(px, py, cx, cy, 0.3, net, rects, segs):
                         continue
                     v = PCB_VIA(board)
@@ -214,6 +251,7 @@ def main():
                     board.Add(t)
 
                     rects.append((cx, cy, dia, dia, net))
+                    holes.append((cx, cy, drill / 2.0))
                     segs.append((px, py, cx, cy, 0.3, net))
                     placed += 1
                     done = True
