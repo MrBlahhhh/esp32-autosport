@@ -844,10 +844,263 @@ def plot_ridethru(traces):
     print("\n    wrote %s" % out)
 
 
+# ================================================================== inrush ===
+def inrush_deck():
+    """Battery connect into the discharged 540 uF bank.
+
+    Until the LM74700's charge pump wakes, the inrush flows through Q1's
+    body diode -- so the surge is limited only by the harness inductance,
+    the fuse's cold resistance and the capacitors' ESR.  The fuse must not
+    open on it and the body diode must not absorb more than a diode can.
+    """
+    return """* battery connect: inrush into the discharged bank
+%s
+
+Vbat  bt 0 DC 0 PULSE(0 13.5 100u 10u 1u 1 2)
+Lharn bt hr 5u
+Rharn hr fin 0.1
+* F1 cold resistance, with an ammeter for the I2t integral.
+Vfuse fin vf DC 0
+Rfuse vf fa 0.05
+Rfb   fa vfb 0.02
+Lfb   fa vfb 0.955u
+
+* Body diode only: the controller has not started yet.  This IS the worst
+* case -- once the FET enhances the drop collapses and stress goes down.
+Dbody vfb vbp DBODY
+
+Cblk  vbp b1 100u
+Rblk  b1 0 0.30
+Cr1   vbp b2 220u
+Rr1   b2 0 0.15
+Cr2   vbp b3 220u
+Rr2   b3 0 0.15
+Cin1  vbp b4 10u
+Rin1  b4 0 0.005
+
+.control
+set filetype=ascii
+set wr_singlescale
+tran 0.2u 3m 0 0.2u uic
+wrdata @DAT@ i(vfuse) v(vbp) v(vfb)
+quit
+.endc
+.end
+""" % MODELS
+
+
+def sim_inrush(plots):
+    head("5. Battery-connect inrush into the ride-through bank")
+    print("    540 uF charging through the harness, F1's cold resistance and")
+    print("    Q1's body diode (the LM74700 has not started yet).")
+    fails = []
+    d = run_deck("inrush", inrush_deck(), ["i(vfuse)", "v(vbp)", "v(vfb)"])
+    t, i_f, vbp, vfb = d["x"], d["i(vfuse)"], d["v(vbp)"], d["v(vfb)"]
+    pk = float(np.abs(i_f).max())
+    i2t = float(np.trapezoid(i_f ** 2, t))
+    # Diode energy during the charge.
+    vd = np.clip(vfb - vbp, 0, None)
+    e_d = float(np.trapezoid(vd * np.abs(i_f), t))
+    settle = t[np.abs(i_f) > 0.5]
+    dur = float(settle[-1] - settle[0]) * 1e3 if len(settle) else 0.0
+    print("    peak current     : %6.1f A" % pk)
+    print("    surge I2t        : %6.3f A2s   (verify against the 0466002.NR"
+          % i2t)
+    print("                       melting I2t in the Littelfuse datasheet --")
+    print("                       nano2 2 A parts are specified around 1 A2s)")
+    print("    body-diode energy: %6.1f mJ over %.2f ms" % (e_d * 1e3, dur))
+    if i2t > 0.8:
+        fails.append("battery-connect I2t %.2f A2s is in the range where a "
+                     "2 A nano fuse ages or opens -- verify the datasheet "
+                     "number or add inrush limiting" % i2t)
+    if e_d > 50e-3:
+        fails.append("Q1 body diode absorbs %.0f mJ during connect" % (e_d*1e3))
+    return fails
+
+
+# =================================================================== crank ===
+def crank_deck(vdip):
+    """ISO 16750-2 style starting profile: drop to `vdip`, 15 ms at the
+    bottom, partial recovery to 6.5 V while the starter turns, then back."""
+    return """* engine crank: does the logger ride it or reset?
+%s
+
+Vbat  bt 0 DC 13.5 PWL(0 13.5  10m 13.5  11m %g  26m %g  31m 6.5
++ 431m 6.5  436m 13.5  1 13.5)
+Lharn bt hr 5u
+Rharn hr vf 0.11
+Rcar  vf 0 200
+
+Rdu  vf  sen 100k
+Rdl  sen 0   12.7k
+Rhys pf  sen 1meg
+Rpu  p33 pf  10k
+V33  p33 0   DC 3.3
+Bq   pf  0   I = (V(pf)/50.0) / (1 + exp(-(V(sen) - 1.24)/0.005))
+
+Bdio  vf vbp I = max(V(vf)-V(vbp), 0)/0.0068 + (V(vf)-V(vbp))*1e-6
+Dbody vf vbp DBODY
+
+Cblk  vbp b1 100u
+Rblk  b1 0 0.30
+Cr1   vbp b2 220u
+Rr1   b2 0 0.15
+Cr2   vbp b3 220u
+Rr2   b3 0 0.15
+
+Bload vbp 0 I = (0.35 / max(V(vbp), 2.0)) * (0.5 + 0.5*tanh((V(vbp) - %g)/0.3))
+
+.control
+set filetype=ascii
+set wr_singlescale
+tran 50u 600m 0 50u
+wrdata @DAT@ v(vbp) v(pf) v(vf)
+quit
+.endc
+.end
+""" % (MODELS, vdip, vdip, UVLO)
+
+
+def sim_crank(plots):
+    head("6. Engine crank: ride or reset, and does PWR_FAIL chatter")
+    print("    ISO 16750-2 style profile: dip at 11 ms, 15 ms at the bottom,")
+    print("    then 400 ms at 6.5 V while the starter turns.  Sensors are")
+    print("    assumed already shed (PWR_FAIL asserts on the way down).")
+    print()
+    fails = []
+    print("    %-18s %10s %10s %10s  %s"
+          % ("dip", "min +VBAT", "rails", "PF edges", "verdict"))
+    for vdip, label in ((6.0, "warm crank 6.0V"), (4.5, "cold crank 4.5V")):
+        d = run_deck("crank_%d" % (vdip * 10), crank_deck(vdip),
+                     ["v(vbp)", "v(pf)", "v(vf)"])
+        t, vbp, pf = d["x"], d["v(vbp)"], d["v(pf)"]
+        vmin = float(vbp.min())
+        dropped = bool((vbp < UVLO).any())
+        # count PWR_FAIL rising edges -- more than one is chatter
+        hi = pf > 1.65
+        edges = int(np.sum(hi[1:] & ~hi[:-1]))
+        bad = []
+        if edges > 1:
+            bad.append("PWR_FAIL chattered %d times" % edges)
+        print("    %-18s %9.2fV %10s %10d  %s"
+              % (label, vmin, "DROP" if dropped else "held", edges,
+                 "; ".join(bad) if bad else
+                 ("ok" if not dropped else
+                  "ok (reset accepted: harness sat below the converters' "
+                  "own dropout)")))
+        fails += ["crank (%s): %s" % (label, b) for b in bad]
+        if dropped and vdip >= 6.0:
+            fails.append("crank (%s): rails dropped even though the harness "
+                         "never went below %.1f V" % (label, vdip))
+    return fails
+
+
+# ==================================================================== usb ===
+def sim_usb(plots):
+    head("7. Non-compliant USB supply backfeeding the 5 V rail")
+    print("    A 'USB' brick that puts 9 or 12 V on VBUS reaches +5V through")
+    print("    PF2 and D5.  The buck can source but not sink, so the rail")
+    print("    goes wherever the brick pushes it.")
+    fails = []
+    deck = """* hostile USB brick into the VBUS -> D5 -> +5V path
+%s
+.model DOR D(IS=1e-9 N=1.05 RS=0.05 BV=40 IBV=1m)
+Vbrick vb 0 DC 12
+Rpf2   vb vbus 0.3
+D5     vbus v5 DOR
+* The buck sources and cannot sink: a 5 V source behind its own ideal
+* diode is exactly that, and unlike a clamped B-source it converges.
+Vbuck  bk 0 DC 5.05
+Dbuck  bk v5 DOR
+* the board's 5 V load
+Rload  v5 0 25
+.control
+set filetype=ascii
+set wr_singlescale
+dc Vbrick 4.5 14 0.05
+wrdata @DAT@ v(v5) v(vbus)
+quit
+.endc
+.end
+""" % MODELS
+    d = run_deck("usb_backfeed", deck, ["v(v5)", "v(vbus)"])
+    vin, v5 = d["x"], d["v(v5)"]
+    at9 = float(np.interp(9.0, vin, v5))
+    at12 = float(np.interp(12.0, vin, v5))
+    print("    brick at  9 V -> +5V rail sits at %5.2f V" % at9)
+    print("    brick at 12 V -> +5V rail sits at %5.2f V" % at12)
+    print("    Parts on +5V and their limits: TJA1051 (6 V), 74AHCT1G125")
+    print("    (7 V), WS2812 header, the sensor-rail switch (30 V gate).")
+    if at9 > 6.0:
+        fails.append("a 9 V USB brick lifts +5V to %.1f V, over the "
+                     "TJA1051's 6 V absolute maximum. Mitigation is one "
+                     "part: replace D5 with an ideal-diode/OVP switch, or "
+                     "accept that only compliant 5 V sources are supported "
+                     "(the README says which was chosen)" % at9)
+    return fails
+
+
+# =============================================================== tolerance ===
+def sim_tolerance(plots):
+    """Monte Carlo over component tolerances -- numpy, no spice needed."""
+    head("8. Tolerance stack (Monte Carlo, 20000 samples)")
+    rng = np.random.default_rng(20260811)
+    N = 20000
+    fails = []
+
+    def r(nom, pct):
+        return nom * (1 + rng.uniform(-pct, pct, N) / 100.0)
+
+    # Power-fail trip point: 1% divider, 1% reference.
+    vref = 1.24 * (1 + rng.uniform(-1, 1, N) / 100.0)
+    trip = vref * (r(100e3, 1) + r(12.7e3, 1)) / r(12.7e3, 1)
+    lo, hi = np.percentile(trip, [0.1, 99.9])
+    print("    PWR_FAIL trip    : %5.2f V nominal, %5.2f..%5.2f V at 99.8%%"
+          % (float(np.median(trip)), lo, hi))
+    if hi > 11.8:
+        fails.append("power-fail trip can reach %.2f V, close enough to a "
+                     "resting 12.2 V battery to false-trigger" % hi)
+    if lo < 9.0:
+        fails.append("power-fail trip can fall to %.2f V" % lo)
+
+    # 0-5 V channel gain: 1k + 10k upper, 15k lower, all 0.1%.
+    up = r(1e3, 0.1) + r(10e3, 0.1)
+    dn = r(15e3, 0.1)
+    gain = dn / (up + dn)
+    err = (gain / (15.0 / 26.0) - 1) * 100
+    print("    0-5V channel gain: +/-%.3f %% worst of 99.8%% "
+          "(0.1%% thin-film stack)" % float(np.percentile(np.abs(err), 99.9)))
+    if np.percentile(np.abs(err), 99.9) > 0.5:
+        fails.append("0-5V divider gain error exceeds 0.5%")
+
+    # Buck outputs: 1.2 V +/-1.5% reference, 1% dividers.
+    for rail, rt, rb, nom in (("+5V", 100e3, 31.6e3, 5.0),
+                              ("+3V3", 100e3, 57.6e3, 3.3)):
+        fb = 1.2 * (1 + rng.uniform(-1.5, 1.5, N) / 100.0)
+        vout = fb * (r(rt, 1) + r(rb, 1)) / r(rb, 1)
+        lo, hi = np.percentile(vout, [0.1, 99.9])
+        print("    %-5s output     : %5.3f..%5.3f V at 99.8%%"
+              % (rail, lo, hi))
+        if rail == "+3V3" and hi > 3.46:
+            fails.append("+3V3 can reach %.2f V, into the ESP32's 3.6 V "
+                         "absolute-max margin" % hi)
+        if lo < nom * 0.95:
+            fails.append("%s can fall %.1f%% low" % (rail, (1 - lo/nom)*100))
+
+    # Battery monitor: 1% divider into a 1%-ish calibrated ADC.
+    div = r(8.2e3, 1) / (r(100e3, 1) + r(8.2e3, 1))
+    err_b = (div / (8.2 / 108.2) - 1) * 100
+    print("    VBAT_SNS scale   : +/-%.2f %% worst of 99.8%% -- calibrate "
+          "in firmware, do not trust the nominal ratio"
+          % float(np.percentile(np.abs(err_b), 99.9)))
+    return fails
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", choices=["frontend", "analog", "buck",
-                                       "ridethru"])
+                                       "ridethru", "inrush", "crank",
+                                       "usb", "tolerance"])
     ap.add_argument("--no-plots", action="store_true")
     args = ap.parse_args()
     plots = not args.no_plots
@@ -863,6 +1116,14 @@ def main():
         fails += sim_buck(plots)
     if args.only in (None, "ridethru"):
         fails += sim_ridethru(plots)
+    if args.only in (None, "inrush"):
+        fails += sim_inrush(plots)
+    if args.only in (None, "crank"):
+        fails += sim_crank(plots)
+    if args.only in (None, "usb"):
+        fails += sim_usb(plots)
+    if args.only in (None, "tolerance"):
+        fails += sim_tolerance(plots)
 
     head("Summary")
     if not fails:

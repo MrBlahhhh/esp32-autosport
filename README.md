@@ -693,6 +693,28 @@ and the ferrite swallow them and the TVS absorbs a measured 0 J.
    the ESP32 is drawing its share; a rail-pumping hazard on a sleeping or
    unpowered board with a live loom.
 
+5. **A non-compliant USB brick backfeeds the 5 V rail.** VBUS reaches +5V
+   through PF2 and D5, and the buck can source but not sink, so a brick that
+   negotiates 9 V puts ~8.4 V on the rail — over the TJA1051's 6 V absolute
+   maximum, with a 12 V brick reaching ~11.3 V. A compliant 5 V source is
+   fine. The one-part mitigation is an OVP load switch in D5's place.
+
+**Second-round studies** (also in `gen/simulate.py`):
+
+- **Battery-connect inrush**: the 540 µF bank charges through Q1's body diode
+  before the LM74700 wakes — 42 A peak, but only 0.20 A²s of surge and 8 mJ
+  in the diode. A 2 A nano fuse is specified around 1 A²s; verify the exact
+  figure on the datasheet at order, but the margin is ~5×.
+- **Engine crank (ISO 16750-2 profile)**: warm (6.0 V dip) and cold (4.5 V
+  dip, 15 ms) both ride through — the bank carries the bottom of the dip and
+  the 6.5 V starter plateau sits above the converters' dropout. `PWR_FAIL`
+  asserts exactly once per crank; the 1 M hysteresis prevents chatter, so
+  firmware sees one clean "close the file" event per start.
+- **Monte Carlo tolerances** (20 000 samples): power-fail trip lands in
+  10.72–11.29 V at 99.8 %; the 0.1 % analog divider stack holds gain error
+  to ±0.08 %; +5 V spans 4.85–5.15 V and +3V3 spans 3.19–3.38 V worst-case;
+  the battery monitor's 1 % divider is ±1.9 % — calibrate it in firmware.
+
 **What it does not cover.** The LM5164's control loop. It is a constant-on-time
 part with an encrypted TI model, so the buck deck drives the power stage at an
 ideal duty cycle: it answers what the passives have to survive, not whether the
