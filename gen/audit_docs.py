@@ -149,11 +149,12 @@ NUMBER_CLAIMS = [
      ["instances", "bom_lines"]),
     ("fab designators (status)", r"list the same (\d+) designators", ["fab_designators"]),
     ("fab designators (§11)", r"list the same \*\*(\d+)\s*\n?designators\*\*", ["fab_designators"]),
-    ("lines carrying a part number", r"agree\.\s*(\d+) lines\s*\ncarry", ["fab_with_pn"]),
+    ("lines carrying a part number",
+     r"agree\. All (\d+)\s*\nlines carry a part number", ["fab_with_pn"]),
     ("SMT parts placed", r"JLC places all (\d+) surface-mount parts", ["fab_designators"]),
     ("match-the-parts split",
-     r"\*\*(\d+)\*\* lines arrive with a part number and match\s*\nthemselves; the other \*\*(\d+)\*\*",
-     ["fab_with_pn", "fab_unpicked"]),
+     r"All \*\*(\d+)\*\* lines arrive with a part number and match",
+     ["fab_with_pn"]),
 ]
 
 
