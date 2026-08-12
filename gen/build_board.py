@@ -142,9 +142,15 @@ def main():
     if os.path.exists(ses):
         os.remove(ses)
     print("\n=== autoroute signals (freerouting, %d passes) ===" % args.passes)
+    # Below-normal priority: freerouting saturates every core for minutes at
+    # a time, which turns the machine into a space heater and starves
+    # whatever else is running. The router finishes a little later; the
+    # computer stays usable.
+    flags = getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)
     res = subprocess.run(["java", "-jar", jar, "-de", dsn, "-do", ses,
                           "-mp", str(args.passes)],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True,
+                         creationflags=flags)
     for line in (res.stdout or "").splitlines():
         if "Auto-routing was" in line or "optimization was" in line:
             print("   " + line.split("INFO")[-1].strip())

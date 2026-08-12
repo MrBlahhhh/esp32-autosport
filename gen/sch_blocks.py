@@ -241,7 +241,10 @@ USB = {
     "anchor": ("USB-C", None),
     "parts": [
         # value          nets                          dx      dy   rot
-        ("0.5A hold", {"VBUS_IN", "VBUS"},           33.02, -15.24,  90),
+        # The polyfuse now feeds VBUS_R; the OVP switch between VBUS_R and
+        # VBUS is packed near the SD socket, so in this drawing the two
+        # rails just hand over through labels with a gap between them.
+        ("0.5A hold", {"VBUS_IN", "VBUS_R"},         33.02, -15.24,  90),
         ("40V 1A",    {"+5V", "VBUS"},               45.72, -19.05, 270),
         ("10uF",      {"VBUS", "GND"},               57.15, -11.43,   0),
         ("100nF",     {"VBUS", "GND"},               66.04, -11.43,   0),
@@ -252,7 +255,8 @@ USB = {
     ],
     "wires": [
         [(15.24, -15.24), (29.21, -15.24)],                     # VBUS in
-        [(36.83, -15.24), (76.20, -15.24), (76.20, 0.00)],      # VBUS
+        [(36.83, -15.24), (40.64, -15.24)],                     # VBUS_R out
+        [(43.18, -15.24), (76.20, -15.24), (76.20, 0.00)],      # VBUS
         [(15.24, -10.16), (30.48, -10.16)],                     # CC1
         [(15.24, -7.62), (38.10, -7.62)],                       # CC2
         [(15.24, 5.08), (71.12, 5.08)],                         # D+
@@ -265,7 +269,8 @@ USB = {
                   (20.32, 5.08), (25.40, 0.00)],
     "labels": {
         "VBUS_IN": (20.32, -15.24, 0),
-        "VBUS": (48.26, -15.24, 0),
+        "VBUS_R": (40.64, -15.24, 0),
+        "VBUS": (43.18, -15.24, 0),
         "USB_CC1": (20.32, -10.16, 0),
         "USB_CC2": (17.78, -7.62, 0),
         "USB_DP_CON": (55.88, 5.08, 0),
@@ -291,8 +296,8 @@ FRONTEND = {
         # value                 nets                        dx      dy   rot
         ("2A slow",  {"VBAT_IN", "VBAT_F"},              -44.45, -35.56,  90),
         ("SMCJ40CA", {"VBAT_F", "GND"},                  -40.64, -31.75, 270),
-        ("600R @ 100MHz 3A", {"VBAT_F", "VBAT_FB"},      -26.67, -35.56,  90),
-        ("100V 6.8mOhm N-ch", {"GATE_RB", "VBAT_FB", "+VBAT"},
+        ("600R", {"VBAT_F", "VBAT_FB"},      -26.67, -35.56,  90),
+        ("IPD068N10", {"GATE_RB", "VBAT_FB", "+VBAT"},
                                                            0.00, -38.10, 270),
         ("1uF",      {"VCAP", "VBAT_FB"},                -25.40,   8.89, 270),
         ("100nF",    {"VBAT_FB", "GND"},               -12.70, -26.67,   0),
@@ -301,12 +306,16 @@ FRONTEND = {
         ("100uF",    {"+VBAT", "GND"},                   12.70, -31.75,   0),
         ("10uF",     {"+VBAT", "GND"},                   20.32, -31.75,   0),
         ("100nF",    {"+VBAT", "GND"},                   27.94, -31.75,   0),
-        ("+VBAT",    {"+VBAT"},                           40.64, -35.56,   0),
+        # The ride-through bank lives on this same rail; drawn anywhere
+        # else the two cans read as orphans.
+        ("220uF",    {"+VBAT", "GND"},                   40.64, -31.75,   0),
+        ("220uF",    {"+VBAT", "GND"},                   48.26, -31.75,   0),
+        ("+VBAT",    {"+VBAT"},                           55.88, -35.56,   0),
     ],
     "wires": [
         [(-40.64, -35.56), (-30.48, -35.56)],                    # fused input
         [(-22.86, -35.56), (-5.08, -35.56)],                     # FET source
-        [(5.08, -35.56), (40.64, -35.56)],                       # +VBAT
+        [(5.08, -35.56), (55.88, -35.56)],                       # +VBAT
         [(33.02, -35.56), (33.02, -41.91)],                      # rail symbol
         [(-7.62, -10.16), (-7.62, -13.97), (-16.51, -13.97),
          (-16.51, -35.56)],                                      # ANODE sense
@@ -328,7 +337,8 @@ FRONTEND = {
                   (-16.51, -20.32),
                   (-16.51, -30.48), (-31.75, -1.27),
                   (12.70, -35.56), (20.32, -35.56), (27.94, -35.56),
-                  (33.02, -35.56), (35.56, -35.56)],
+                  (33.02, -35.56), (35.56, -35.56),
+                  (40.64, -35.56), (48.26, -35.56)],
     "rails": [("+VBAT", 33.02, -41.91, (0, -1))],
     "labels": {
         "VBAT_F": (-36.83, -35.56, 0),
@@ -352,7 +362,7 @@ CAN = {
         ("100nF",  {"+5V", "GND"},                      -10.16, -20.32,   0),
         ("100nF",  {"+3V3", "GND"},                     -20.32, -20.32,   0),
         ("10k",    {"CAN_S", "GND"},                    -17.78,   8.89,   0),
-        ("51uH CMC", {"CANH_T", "CAN_H", "CANL_T", "CAN_L"},
+        ("51uH", {"CANH_T", "CAN_H", "CANL_T", "CAN_L"},
                                                          25.40,   0.00,   0),
         ("SMAJ26CA", {"CAN_H", "GND"},                   43.18,  -8.89, 270),
         ("SMAJ26CA", {"CAN_L", "GND"},                   43.18,  24.13, 270),
@@ -399,10 +409,10 @@ SDCARD = {
     "anchor": ("microSD push-pull", None),
     "parts": [
         # value      nets                          dx      dy   rot
-        ("-20V 2.3A P-ch", {"SD_PG", "+3V3", "SD_VDD"},
+        ("DMG2301L", {"SD_PG", "+3V3", "SD_VDD"},
                                                 -72.39, -73.66, 180),
         ("100k",     {"+3V3", "SD_PG"},         -60.96, -78.74,   0),
-        ("60V 300mA N-ch", {"SD_EN_G", "GND", "SD_PG"},
+        ("2N7002", {"SD_EN_G", "GND", "SD_PG"},
                                                 -57.15, -63.50,   0),
         ("1k",       {"SD_PWR_EN", "SD_EN_G"},  -73.66, -63.50,  90),
         ("100k",     {"SD_EN_G", "GND"},        -66.04, -59.69,   0),
@@ -443,9 +453,254 @@ SDCARD = {
 }
 
 
+RIDETHRU = {
+    # The power-fail detector, read left to right the way the signal flows:
+    # the harness sense divider drops VBAT_F to the TLV431's REF, the 1nF
+    # keeps switching noise off it, and when REF falls below 1.24 V the
+    # cathode releases PWR_FAIL to its pull-up -- a rising edge into the
+    # MCU. The 1M from PWR_FAIL back into the sense node is the hysteresis
+    # that keeps a battery sagging across the trip from chattering it.
+    "sheet": "Power",
+    "anchor": ("TLV431A", {"PWR_FAIL", "PFD_SENSE", "GND"}),
+    "parts": [
+        # value    nets                            dx      dy   rot
+        ("100k",  {"VBAT_F", "PFD_SENSE"},      -16.51, -17.78,   0),
+        ("12.7k", {"PFD_SENSE", "GND"},         -16.51,  -5.08,   0),
+        ("1nF",   {"PFD_SENSE", "GND"},          -7.62,  -5.08,   0),
+        ("10k",   {"+3V3", "PWR_FAIL"},          10.16,  -6.35,   0),
+        ("1M",    {"PWR_FAIL", "PFD_SENSE"},     -3.81,   5.08, 270),
+    ],
+    "wires": [
+        [(-16.51, -21.59), (-16.51, -24.13), (-21.59, -24.13)],  # VBAT_F in
+        [(-16.51, -13.97), (-16.51, -11.43)],                    # divider top
+        [(-16.51, -11.43), (-16.51, -8.89)],                     # divider bot
+        [(-16.51, -11.43), (-7.62, -11.43)],                     # sense run
+        [(-7.62, -11.43), (0.00, -11.43), (0.00, -2.54)],        # into REF
+        [(-7.62, -11.43), (-7.62, -8.89)],                       # filter cap
+        [(2.54, 0.00), (10.16, 0.00)],                           # cathode out
+        [(10.16, 0.00), (12.70, 0.00)],
+        [(12.70, 0.00), (15.24, 0.00)],                          # PWR_FAIL
+        [(10.16, -2.54), (10.16, 0.00)],                         # pull-up
+        [(0.00, 5.08), (12.70, 5.08), (12.70, 0.00)],            # hysteresis
+        [(-7.62, 5.08), (-20.32, 5.08), (-20.32, -11.43),
+         (-16.51, -11.43)],                                      # back to sense
+    ],
+    "junctions": [(-16.51, -11.43), (-7.62, -11.43),
+                  (10.16, 0.00), (12.70, 0.00)],
+    "labels": {
+        "VBAT_F": (-21.59, -24.13, 0),
+        "PFD_SENSE": (-13.97, -11.43, 0),
+        "PWR_FAIL": (15.24, 0.00, 0),
+    },
+}
+
+
+SENSW = {
+    # The switched sensor rail as one line, in the order the current takes:
+    # +5V through the high-side P-FET, the polyfuse, the ferrite, out as
+    # +5VS with its reservoir and clamp. The gate ladder hangs above: 100k
+    # holds the switch off, the 2N7002 pulls the gate down when the MCU
+    # asserts SENS_EN, and its own 100k keeps it off through reset.
+    #
+    # Anchored on the 2N7002, not the P-FET: a block's anchor keeps its
+    # default rotation, and the P-FET needs 270 to lie along the rail.
+    "sheet": "Power",
+    "anchor": ("2N7002", {"SENS_EN_G", "GND", "SENS_G"}),
+    "parts": [
+        # value                   nets                       dx      dy   rot
+        ("AO3401A", {"SENS_G", "+5V", "VSENS_SW"},    -10.16,  24.13, 270),
+        ("100k",  {"+5V", "SENS_G"},                      -19.05,  16.51,  90),
+        ("10k",   {"SENS_EN", "SENS_EN_G"},               -13.97,   0.00,  90),
+        ("100k",  {"SENS_EN_G", "GND"},                    -7.62,   3.81,   0),
+        ("0.2A PTC", {"VSENS_SW", "VSENS_F"},  7.62,  26.67,  90),
+        ("600R", {"VSENS_F", "+5VS"},          27.94,  26.67,  90),
+        ("10uF",  {"+5VS", "GND"},                         38.10,  30.48,   0),
+        ("SMAJ6.0A", {"+5VS", "GND"},                      44.45,  30.48, 270),
+    ],
+    "wires": [
+        [(-15.24, 26.67), (-24.13, 26.67)],                      # source rail
+        [(-24.13, 26.67), (-25.40, 26.67), (-25.40, 22.86)],     # +5V symbol
+        [(-22.86, 16.51), (-24.13, 16.51), (-24.13, 26.67)],     # gate pull
+        [(-15.24, 16.51), (-10.16, 16.51)],                      # gate node
+        [(-10.16, 19.05), (-10.16, 16.51)],
+        [(-10.16, 16.51), (6.35, 16.51), (6.35, -5.08),
+         (2.54, -5.08)],                                         # to the drain
+        [(-17.78, 0.00), (-21.59, 0.00)],                        # SENS_EN in
+        [(-10.16, 0.00), (-7.62, 0.00)],
+        [(-7.62, 0.00), (-5.08, 0.00)],                          # to the gate
+        [(-5.08, 26.67), (3.81, 26.67)],                         # VSENS_SW
+        [(11.43, 26.67), (24.13, 26.67)],                        # VSENS_F
+        [(31.75, 26.67), (38.10, 26.67)],                        # +5VS
+        [(38.10, 26.67), (44.45, 26.67)],
+        [(44.45, 26.67), (49.53, 26.67), (49.53, 22.86)],        # rail symbol
+    ],
+    "junctions": [(-24.13, 26.67), (-10.16, 16.51), (-7.62, 0.00),
+                  (38.10, 26.67), (44.45, 26.67)],
+    "rails": [("+5V", -25.40, 22.86, (0, -1)),
+              ("+5VS", 49.53, 22.86, (0, -1))],
+    "labels": {
+        "SENS_G": (-12.70, 16.51, 0),
+        "SENS_EN": (-21.59, 0.00, 0),
+        "SENS_EN_G": (-8.89, 0.00, 0),
+        "VSENS_SW": (-1.27, 26.67, 0),
+        "VSENS_F": (16.51, 26.67, 0),
+    },
+}
+
+
+USBOVP = {
+    # The USB overvoltage cutoff. The VBUS_R rail from the polyfuse crosses
+    # the P-FET into VBUS; the divider below watches the raw side, and above
+    # the trip the TLV431 sinks the PNP's base so the gate is yanked up to
+    # the source and the switch opens. Gate pull-down keeps it on in normal
+    # life; the 10k keeps the PNP off while the TLV431 is not conducting.
+    "sheet": "MCU",
+    "anchor": ("TLV431A", {"VBUS_OV", "VBUS_OVS", "GND"}),
+    "parts": [
+        # value    nets                             dx      dy   rot
+        ("AO3401A", {"VBUS_G", "VBUS_R", "VBUS"},  5.08, -30.48, 270),
+        ("MMBT3906",   {"VBUS_OV", "VBUS_R", "VBUS_G"},    -5.08, -38.10,   0),
+        ("100k",  {"VBUS_G", "GND"},                  17.78, -35.56,   0),
+        ("10k",   {"VBUS_R", "VBUS_OV"},               7.62,  -7.62,   0),
+        ("100k",  {"VBUS_R", "VBUS_OVS"},            -16.51, -16.51,   0),
+        ("27.4k", {"VBUS_OVS", "GND"},               -16.51,  -6.35,   0),
+    ],
+    "wires": [
+        [(-16.51, -20.32), (-16.51, -27.94), (-2.54, -27.94)],   # VBUS_R rail
+        [(-2.54, -27.94), (0.00, -27.94)],                       # into source
+        [(-2.54, -33.02), (-2.54, -27.94)],                      # PNP emitter
+        [(-2.54, -43.18), (5.08, -43.18), (5.08, -39.37)],       # PNP collector
+        [(5.08, -39.37), (5.08, -35.56)],                        # to the gate
+        [(5.08, -39.37), (17.78, -39.37)],                       # gate pull-down
+        [(7.62, -11.43), (7.62, -27.94), (0.00, -27.94)],        # 10k to VBUS_R
+        [(2.54, 0.00), (7.62, 0.00), (7.62, -3.81)],             # cathode node
+        [(-16.51, -12.70), (-16.51, -11.43)],                    # divider mid
+        [(-16.51, -11.43), (-16.51, -10.16)],
+        [(-16.51, -11.43), (0.00, -11.43), (0.00, -2.54)],       # into REF
+        [(-10.16, -38.10), (-12.70, -38.10), (-12.70, -19.05),
+         (11.43, -19.05), (11.43, 0.00), (7.62, 0.00)],          # PNP base
+        [(10.16, -27.94), (12.70, -27.94), (12.70, -31.75)],     # VBUS symbol
+    ],
+    "junctions": [(-2.54, -27.94), (0.00, -27.94), (5.08, -39.37),
+                  (-16.51, -11.43), (7.62, 0.00)],
+    "rails": [("VBUS", 12.70, -31.75, (0, -1))],
+    "labels": {
+        "VBUS_R": (-10.16, -27.94, 0),
+        "VBUS_OV": (5.08, 0.00, 0),
+        "VBUS_OVS": (-8.89, -11.43, 0),
+        "VBUS_G": (10.16, -39.37, 0),
+    },
+}
+
+
+SPAREIO = {
+    # The spare-IO header with its strap pull-downs attached, instead of
+    # three resistors floating elsewhere on the sheet. The drops cross the
+    # lower stubs without junctions -- crossings are not connections.
+    "sheet": "MCU",
+    "anchor": ("Spare IO", None),
+    "parts": [
+        # value   nets              dx      dy   rot
+        ("10k",  {"IO3", "GND"},   -8.89,  12.70,  0),
+        ("10k",  {"IO45", "GND"}, -13.97,  12.70,  0),
+        ("10k",  {"IO46", "GND"}, -19.05,  12.70,  0),
+    ],
+    "wires": [
+        [(-5.08, -5.08), (-8.89, -5.08)],
+        [(-8.89, -5.08), (-16.51, -5.08)],                       # IO3
+        [(-5.08, -2.54), (-13.97, -2.54)],
+        [(-13.97, -2.54), (-16.51, -2.54)],                      # IO45
+        [(-5.08, 0.00), (-19.05, 0.00)],
+        [(-19.05, 0.00), (-21.59, 0.00)],                        # IO46
+        [(-5.08, 2.54), (-16.51, 2.54)],                         # PWR_FAIL
+        [(-5.08, 5.08), (-16.51, 5.08)],                         # SENS_EN
+        [(-8.89, -5.08), (-8.89, 8.89)],                         # drop 1
+        [(-13.97, -2.54), (-13.97, 8.89)],                       # drop 2
+        [(-19.05, 0.00), (-19.05, 8.89)],                        # drop 3
+    ],
+    "junctions": [(-8.89, -5.08), (-13.97, -2.54), (-19.05, 0.00)],
+    "labels": {
+        "IO3": (-16.51, -5.08, 0),
+        "IO45": (-16.51, -2.54, 0),
+        "IO46": (-21.59, 0.00, 0),
+        "PWR_FAIL": (-16.51, 2.54, 0),
+        "SENS_EN": (-16.51, 5.08, 0),
+    },
+}
+
+
+QWIIC = {
+    # The Qwiic header with the bus pull-ups it owns drawn on it.
+    "sheet": "MCU",
+    "anchor": ("I2C / Qwiic", None),
+    "parts": [
+        # value    nets                    dx      dy   rot
+        ("4.7k",  {"+3V3", "I2C_SDA"},   -8.89, -10.16,  0),
+        ("4.7k",  {"+3V3", "I2C_SCL"},  -13.97, -10.16,  0),
+    ],
+    "wires": [
+        [(-5.08, 2.54), (-8.89, 2.54)],
+        [(-8.89, 2.54), (-16.51, 2.54)],                         # SDA
+        [(-5.08, 5.08), (-13.97, 5.08)],
+        [(-13.97, 5.08), (-16.51, 5.08)],                        # SCL
+        [(-8.89, 2.54), (-8.89, -6.35)],                         # SDA pull-up
+        [(-13.97, 5.08), (-13.97, -6.35)],                       # SCL pull-up
+    ],
+    "junctions": [(-8.89, 2.54), (-13.97, 5.08)],
+    "labels": {
+        "I2C_SDA": (-16.51, 2.54, 0),
+        "I2C_SCL": (-16.51, 5.08, 0),
+    },
+}
+
+
+UTILITY = {
+    # The sheet's single-pin utility parts, gathered into one panel instead
+    # of smeared one-per-row down a column: a row of test points, a row of
+    # the ERC power-source flags, the mounting holes, and the power LED.
+    # None of these need wires -- each pin picks up its net through the
+    # label or power symbol the emitter attaches -- the block exists purely
+    # so they read as a deliberate group.
+    "sheet": "Power",
+    "anchor": ("PG_5V", {"PG_5V"}),
+    "parts": [
+        # value       nets            dx      dy   rot
+        ("PG_3V3",   {"PG_3V3"},    12.70,   0.00,  0),
+        # (the +VBAT test point already lives at the end of FRONTEND's
+        # bulk rail, where it is actually useful)
+        ("+5V",      {"+5V"},       25.40,   0.00,  0),
+        ("+3V3",     {"+3V3"},      38.10,   0.00,  0),
+        ("+5VS",     {"+5VS"},      50.80,   0.00,  0),
+        ("GND",      {"GND"},       63.50,   0.00,  0),
+        ("PWR_FLAG", {"GND"},        0.00,  25.40,  0),
+        ("PWR_FLAG", {"+VBAT"},     10.16,  25.40,  0),
+        ("PWR_FLAG", {"VBAT_FB"},   20.32,  25.40,  0),
+        ("PWR_FLAG", {"+5V"},       30.48,  25.40,  0),
+        ("PWR_FLAG", {"+3V3"},      40.64,  25.40,  0),
+        ("PWR_FLAG", {"+5VS"},      50.80,  25.40,  0),
+        ("PWR_FLAG", {"VBUS"},      60.96,  25.40,  0),
+        ("PWR_FLAG", {"SD_VDD"},    71.12,  25.40,  0),
+        ("M3",       set(),          0.00,  45.72,  0),
+        ("M3",       set(),         10.16,  45.72,  0),
+        ("M3",       set(),         20.32,  45.72,  0),
+        ("M3",       set(),         30.48,  45.72,  0),
+        ("1k",       {"PWR_LED_K", "GND"},   50.80, 45.72, 270),
+        ("green",    {"PWR_LED_K", "+3V3"},  63.50, 45.72,   0),
+    ],
+    "wires": [
+        [(54.61, 45.72), (59.69, 45.72)],        # 1k into the LED cathode
+    ],
+    "junctions": [],
+    "labels": {
+        "PWR_LED_K": (57.15, 45.72, 0),
+    },
+}
+
+
 BLOCKS = [
     buck("LM5164 (5V)", "+5V", "SW_5V", "EN_5V", "RON_5V", "FB_5V", "BST_5V", "RAMP_5V",
-         "PG_5V", "33uH 3A", "31.6k", "31.6k", "121k"),
+         "PG_5V", "33uH", "31.6k", "31.6k", "121k"),
     buck("LM5164 (3V3)", "+3V3", "SW_3V3", "EN_3V3", "RON_3V3", "FB_3V3", "BST_3V3",
-         "RAMP_3V3", "PG_3V3", "22uH 3A", "20.5k", "57.6k", "95.3k"),
-] + [channel(n) for n in (1, 2, 3, 4)] + [FRONTEND, CAN, SDCARD, USB, MODULE, WS2812]
+         "RAMP_3V3", "PG_3V3", "22uH", "20.5k", "57.6k", "95.3k"),
+] + [channel(n) for n in (1, 2, 3, 4)] + [FRONTEND, CAN, SDCARD, USB, MODULE,
+     WS2812, RIDETHRU, SENSW, USBOVP, SPAREIO, QWIIC, UTILITY]

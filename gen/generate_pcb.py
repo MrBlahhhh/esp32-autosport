@@ -165,7 +165,7 @@ BUCK_FIXED = [
     ("Power", "2.2nF 50V",  {"BST_5V", "SW_5V"},         (42.0, 37.6, 0)),
     ("Power", "121k",       {"SW_5V", "RAMP_5V"},        (45.7, 37.6, 0)),
     ("Power", "LM5164 (5V)", None,                       (42.5, 42.0, 0)),
-    ("Power", "33uH 3A",    {"SW_5V", "+5V"},            (53.0, 42.0, 0)),
+    ("Power", "33uH",    {"SW_5V", "+5V"},            (53.0, 42.0, 0)),
     ("Power", "100nF 100V", {"+VBAT", "GND"},            (36.3, 42.2, 180)),
     ("Power", "10uF 100V",  {"+VBAT", "GND"},            (36.2, 45.1, 180)),
     ("Power", "31.6k",      {"RON_5V", "GND"},           (38.5, 48.2, 0)),
@@ -190,7 +190,7 @@ BUCK_FIXED = [
     ("Power", "2.2nF 50V",  {"BST_3V3", "SW_3V3"},       (42.0, 53.4, 0)),
     ("Power", "95.3k",      {"SW_3V3", "RAMP_3V3"},      (45.7, 53.4, 0)),
     ("Power", "LM5164 (3V3)", None,                      (42.5, 57.8, 0)),
-    ("Power", "22uH 3A",    {"SW_3V3", "+3V3"},          (53.0, 57.8, 0)),
+    ("Power", "22uH",    {"SW_3V3", "+3V3"},          (53.0, 57.8, 0)),
     ("Power", "20.5k",      {"RON_3V3", "GND"},          (38.5, 64.0, 0)),
     ("Power", "57.6k",      {"FB_3V3", "GND"},           (42.5, 64.0, 0)),
     ("Power", "100k",       {"+3V3", "FB_3V3"},          (46.5, 64.0, 0)),
@@ -254,8 +254,9 @@ ZONES = [
     # grew.  Must be listed before `frontend` and `sens5v`, both of whose
     # predicates would otherwise claim the divider and the switch.
     ("ridethru",  (34.5, 69.0, 14.5, 11.0), lambda p, n, s: s == "Power" and bool(n & {"PFD_SENSE", "PWR_FAIL", "SENS_G", "SENS_EN_G"})),
-    ("usb",       (62.0,  8.0, 13.0, 14.0), lambda p, n, s: n & {"USB_DP_CON", "USB_DM_CON", "USB_CC1", "USB_CC2", "VBUS_IN", "VBUS", "USB_DP", "USB_DM"}),
+    ("usb",       (62.0,  8.0, 13.0, 14.0), lambda p, n, s: n & {"USB_DP_CON", "USB_DM_CON", "USB_CC1", "USB_CC2", "VBUS_IN", "VBUS", "USB_DP", "USB_DM"} or (p["prefix"] == "Q" and "VBUS_G" in n)),
     ("sdpwr",     (59.0, 49.3, 11.0,  8.5), lambda p, n, s: n & {"SD_PG", "SD_EN_G", "SD_PWR_EN"}),
+    ("sdesd",     (63.3, 34.0,  4.3, 14.0), lambda p, n, s: p["value"] == "SRV05-4" or (s == "SD Card" and p["prefix"] == "TP")),
     ("sd",        (49.8, 21.4, 13.2, 15.0), lambda p, n, s: s == "SD Card"),
     ("can",       ( 9.5, 34.0, 21.0, 15.2), lambda p, n, s: s == "CAN"),
     ("sens5v",    (34.5, 81.0, 13.5,  8.0), lambda p, n, s: n & {"VSENS_F", "VSENS_SW", "+5VS"} and s == "Power"),
@@ -264,7 +265,7 @@ ZONES = [
     # left. Pull-downs parked in the bottom band left R29 needing a run
     # the length of the board; put them on the path instead.
     ("strap",     (42.6, 20.8,  6.6,  7.6), lambda p, n, s: n & {"IO3", "IO45", "IO46"}),
-    ("mcu_misc",  (63.0, 23.0, 19.0, 10.4), lambda p, n, s: s == "MCU"),
+    ("mcu_misc",  (63.0, 24.5, 19.0,  8.9), lambda p, n, s: s == "MCU"),
     ("pwr_misc",  (47.5, 69.5, 13.0, 13.0), lambda p, n, s: True),
 ]
 

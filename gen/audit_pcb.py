@@ -60,12 +60,17 @@ RAIL_CURRENT = {
 # part's value rather than its reference, which renumbers on every run.
 NOT_SUPPLY = {
     ("LM74700", "4"): "CATHODE, the load-side sense input",
+    # The USBLC6 VBUS pin is the clamp's top rail, not a supply: it draws
+    # nothing in normal life and during a strike the discharge path is
+    # dominated by GND. 7-8 mm to the rail caps is accepted; the data-line
+    # pair the part exists for sits directly at the connector.
+    ("USBLC6", "5"): "ESD clamp rail reference",
 }
 
 # Parts that dissipate enough to care about: ref-prefix match -> watts.
 DISSIPATION = {
     "LM5164": 0.55,    # ~92 % efficient at 5 V / 2 A
-    "IPD068N10N3G": 0.010,   # 1.2 A^2 * 6.8 mohm
+    "IPD068N10": 0.010,   # 1.2 A^2 * 6.8 mohm
 }
 
 

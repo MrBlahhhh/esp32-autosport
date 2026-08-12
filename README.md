@@ -18,7 +18,9 @@ A data logger you wire straight into a race car: 12 V and CAN come in on one
   header, and spare I/O.
 - **The Python in `gen/` is the real source.** It generates, places, routes,
   audits, and circuit-simulates the whole board; the KiCad files are build
-  outputs. `python gen/build_board.py` rebuilds the PCB from nothing.
+  outputs. `python gen/build_board.py` rebuilds the PCB from nothing, and
+  [`gen/README.md`](gen/README.md) documents the whole pipeline — including
+  the schematic-drawing conventions — so the next board can reuse it.
 - **State: routed clean, simulated, never manufactured.** Order a small
   prototype run first.
 
@@ -37,12 +39,12 @@ socket and conditioned analog inputs.
 
 **Status: Rev B, fully routed.** Schematic is ERC-clean on KiCad 9.0. The PCB
 is **84 x 100 mm**, 4-layer, **fully placed and routed with zero DRC errors and
-nothing unconnected** — 1431 tracks, 256 vias, 194 footprints, 111 nets. Rev B
+nothing unconnected** — 1660 tracks, 296 vias, 206 footprints, 115 nets. Rev B
 carries the fixes from an external datasheet review (§7): the LM74700 enable
 divider, the ANODE capacitor, two TVS standoff corrections, transient clamps
 on the analog harness inputs, and a dozen smaller items. `fab/` holds the
 Gerbers, drill, BOM and pick-and-place in JLCPCB's format, BOM and CPL verified
-to list the same 160 designators. See §9 for how the board is built, §10 for
+to list the same 170 designators. See §9 for how the board is built, §10 for
 what simulation and the physical audit say about it, and §11 for
 the ordering steps. **Nothing has ever been fabricated — the first order should
 be a small prototype run.**
@@ -60,7 +62,7 @@ be a small prototype run.**
 | Analog in | 4 channels, solder-jumper divider (0–3.3 V / 0–5 V / 0–16 V) + optional pull-up bias, shared by the ESP32 ADC and a 16-bit ADS1115 |
 | Extras | Battery voltage monitor, USB-C (native USB), I²C/Qwiic, UART0, SPI breakout, WS2812 5 V DIN header, 6-pin spare-IO header |
 | Rails | +5 V @ 1 A, +3V3 @ 1 A, +5 V sensor excitation (separately fused) |
-| Parts | 185 component instances, 95 distinct BOM lines, all surface-mount except 8 through-hole connectors |
+| Parts | 195 component instances, 98 distinct BOM lines, all surface-mount except 8 through-hole connectors |
 
 ---
 
@@ -693,11 +695,15 @@ and the ferrite swallow them and the TVS absorbs a measured 0 J.
    the ESP32 is drawing its share; a rail-pumping hazard on a sleeping or
    unpowered board with a live loom.
 
-5. **A non-compliant USB brick backfeeds the 5 V rail.** VBUS reaches +5V
-   through PF2 and D5, and the buck can source but not sink, so a brick that
-   negotiates 9 V puts ~8.4 V on the rail — over the TJA1051's 6 V absolute
-   maximum, with a 12 V brick reaching ~11.3 V. A compliant 5 V source is
-   fine. The one-part mitigation is an OVP load switch in D5's place.
+5. **A non-compliant USB brick used to backfeed the 5 V rail — now cut
+   off.** VBUS reaches +5V through PF2 and D5, and the buck can source but
+   not sink, so a brick that negotiated 9 V put ~8.4 V on the rail — over
+   the TJA1051's 6 V absolute maximum. Fixed with a TLV431 + AO3401 series
+   cutoff tripping at 5.77 V (the same recipe as the sensor-rail switch):
+   re-simulated, a compliant 5 V source passes at 4.99 V, the switch opens
+   at 5.95 V of brick, and the rail never exceeds 5.2 V from anything up
+   to 14 V. Off-the-shelf OVP parts were rejected first — the TPS25200
+   class cuts off near 7 V, which is no protection for a 6 V limit.
 
 **Second-round studies** (also in `gen/simulate.py`):
 
@@ -733,6 +739,24 @@ The decoupling check is what found the two placement defects fixed here — the
 across to the +5 V island's pair, and the CAN transceiver's +5 V bypass sat
 8.8 mm from its supply pin. Both now sit at their pins, pinned by `PIN_FIXED`
 in `gen/generate_pcb.py` so the zone packer cannot drift them again.
+
+### External DFT review
+
+An automated design-for-test review (tomachie, 85/100) was run on the design.
+Three findings became hardware: **test points on SD_CLK/SD_CMD** (the SD bus
+is the most likely bring-up debug target and was otherwise unprobeable),
+**a second USBLC6 on the USB-C CC pins** (first contacts to mate on every
+plug insertion, previously bare), and **two SRV05-4 arrays on the card-slot
+contacts** (swapped by hand constantly; only the ESP32's ~2 kV pin diodes
+stood behind them).
+
+The rest was triaged and declined deliberately: its "unconnected J9 pin 4"
+is a pin-type classification of the FET-switched SD_VDD (the `PWR_FLAG`
+case, verified connected on copper); PWR_FAIL/SENS_EN/I2C/SPI/UART "missing
+test points" are already on 0.1" headers, which beat test points; IPC-7351B
+footprint renaming, ATE isolation resistors on the buttons, bed-of-nails
+coverage scores and boundary scan are production-line concerns that a
+prototype run priced for flying-probe does not buy anything from.
 
 ## 11. Handoff — remaining work
 

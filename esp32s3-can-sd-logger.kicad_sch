@@ -6,8 +6,8 @@
 
   (title_block
     (title "ESP32-S3 CAN + microSD Automotive Logger")
-    (date "")
-    (rev "A")
+    (date "2026-08-11")
+    (rev "B")
     (company "geekopolis")
     (comment 1 "Root sheet -- see the block sheets below")
   )

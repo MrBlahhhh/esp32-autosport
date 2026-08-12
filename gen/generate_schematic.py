@@ -376,7 +376,9 @@ def det_uuid(key):
 
 PROJECT = "esp32s3-can-sd-logger"
 TITLE = "ESP32-S3 CAN + microSD Automotive Logger"
-REV = "A"
+REV = "B"
+DATE = "2026-08-11"   # the date of the last electrical change, not of the
+                      # last regeneration -- update it when the netlist moves
 COMPANY = "geekopolis"
 
 R0805 = "Resistor_SMD:R_0805_2012Metric"
@@ -429,8 +431,8 @@ def split_value(value):
     parses the schematic: a review tool reading "1k 0.1%" sees no usable
     resistance and reports the part as unvalued, which is what happened to
     34 capacitors and 16 resistors here. Only a trailing voltage or
-    tolerance token is peeled off, so "600R @ 100MHz 2A" and
-    "0.2A hold / 0.4A trip" are left exactly as they are.
+    tolerance token is peeled off, so "600R" and
+    "0.2A PTC" are left exactly as they are.
     """
     tol = volt = ""
     m = _TOL_RE.search(value)
@@ -495,7 +497,7 @@ part(pw, "J", "Connector_Generic:Conn_01x04", "PWR + CAN harness", JST4,
 part(pw, "F", "Device:Fuse", "2A slow", "Fuse:Fuse_1206_3216Metric",
      {"1": "VBAT_IN", "2": "VBAT_F"}, "Littelfuse 0466002.NR",
      "Sacrificial: only opens on a hard fault, not on reverse polarity")
-part(pw, "FB", "Device:L", "600R @ 100MHz 3A", "Inductor_SMD:L_1206_3216Metric",
+part(pw, "FB", "Device:L", "600R", "Inductor_SMD:L_1206_3216Metric",
      {"1": "VBAT_F", "2": "VBAT_FB"}, "Wurth 742792625", "Conducted-emissions bead")
 
 # Ideal-diode reverse-battery block
@@ -503,7 +505,7 @@ part(pw, "U", "Power_Management:LM74700", "LM74700-Q1", SOT236,
      {"1": "VCAP", "2": "GND", "3": "VBAT_UVLO", "4": "+VBAT", "5": "GATE_RB", "6": "VBAT_FB"},
      "LM74700QDBVRQ1", "Ideal-diode controller; blocks reverse battery via Q1",
      lcsc="C2941042")
-part(pw, "Q", "Device:Q_NMOS_GSD", "100V 6.8mOhm N-ch", "Package_TO_SOT_SMD:TO-252-3_TabPin2",
+part(pw, "Q", "Device:Q_NMOS_GSD", "IPD068N10", "Package_TO_SOT_SMD:TO-252-3_TabPin2",
      {"1": "GATE_RB", "2": "VBAT_FB", "3": "+VBAT"}, "Infineon IPD068N10N3G",
      "Source to battery, drain to load: body diode blocks reverse polarity. "
      "The previously specified PSMN4R3-100BSE does not exist", lcsc="C88066")
@@ -611,12 +613,12 @@ C(pw, "1nF 50V", "PFD_SENSE", "GND",
 # Off by default: the gate is pulled to +5V through R_g, so the rail comes up
 # only when firmware asserts SENS_EN, and it drops the instant the MCU stops
 # driving. That is the correct failure direction for a rail that feeds a loom.
-part(pw, "Q", "Device:Q_PMOS_GSD", "P-ch 30V 3A", SOT23,
+part(pw, "Q", "Device:Q_PMOS_GSD", "AO3401A", SOT23,
      {"1": "SENS_G", "2": "+5V", "3": "VSENS_SW"}, "Alpha & Omega AO3401A",
      "Sensor-rail load switch. Source to +5V, so the body diode points into "
      "the rail and the switch blocks with the gate high", lcsc="C15127")
 R(pw, "100k", "+5V", "SENS_G", note="Holds the switch off when nothing drives it")
-part(pw, "Q", "Device:Q_NMOS_GSD", "N-ch 60V 200mA", SOT23,
+part(pw, "Q", "Device:Q_NMOS_GSD", "2N7002", SOT23,
      {"1": "SENS_EN_G", "2": "GND", "3": "SENS_G"}, "onsemi 2N7002",
      "Level shifter: the P-FET's gate has to be pulled to GND from 5V, and "
      "a 3.3V GPIO cannot do that directly", lcsc="C8545")
@@ -639,7 +641,7 @@ R(pw, "31.6k", "RON_5V", "GND",
 C(pw, "2.2nF 50V", "BST_5V", "SW_5V",
   note="Bootstrap: datasheet mandates exactly 2.2nF X7R -- a larger value "
        "overstresses the internal VCC regulator and damages the device")
-part(pw, "L", "Device:L", "33uH 3A", "Inductor_SMD:L_Sunlord_SWPA8040S",
+part(pw, "L", "Device:L", "33uH", "Inductor_SMD:L_Sunlord_SWPA8040S",
      {"1": "SW_5V", "2": "+5V"}, "Sunlord ASWPA8050S330MT",
      "Shielded molded, Isat 3A vs the 1.75A max peak limit", lcsc="C340244")
 R(pw, "100k", "+5V", "FB_5V", note="FB upper: 1.2V ref -> 5.00V")
@@ -677,7 +679,7 @@ R(pw, "20.5k", "RON_3V3", "GND",
        "53.3V clamp, above the 50ns minimum")
 C(pw, "2.2nF 50V", "BST_3V3", "SW_3V3",
   note="Bootstrap: datasheet-mandated 2.2nF X7R, do not increase")
-part(pw, "L", "Device:L", "22uH 3A", "Inductor_SMD:L_Sunlord_SWPA8040S",
+part(pw, "L", "Device:L", "22uH", "Inductor_SMD:L_Sunlord_SWPA8040S",
      {"1": "SW_3V3", "2": "+3V3"}, "Sunlord ASWPA8050S220MT",
      "Same automotive series as L1")
 R(pw, "100k", "+3V3", "FB_3V3", note="FB upper: 1.2V ref -> 3.28V")
@@ -696,12 +698,12 @@ part(pw, "D", "Device:D_Zener", "3.6V 300mW", "Diode_SMD:D_SOD-323",
      "otherwise float above the ESP32's 3.6V absolute maximum")
 
 # 5V sensor excitation, fused separately from the board 5V
-part(pw, "PF", "Device:Polyfuse", "0.2A hold / 0.4A trip", "Resistor_SMD:R_1206_3216Metric",
+part(pw, "PF", "Device:Polyfuse", "0.2A PTC", "Resistor_SMD:R_1206_3216Metric",
      {"1": "VSENS_SW", "2": "VSENS_F"}, "Bourns MF-MSMF020",
      "Resettable: a shorted sensor wire trips this, not the board. Now behind "
      "the load switch, so a short is also something firmware can clear by "
      "dropping SENS_EN, rather than waiting for the fuse to cool")
-part(pw, "FB", "Device:L", "600R @ 100MHz 2A", "Inductor_SMD:L_0805_2012Metric",
+part(pw, "FB", "Device:L", "600R", "Inductor_SMD:L_0805_2012Metric",
      {"1": "VSENS_F", "2": "+5VS"}, "Wurth 742792022")
 C(pw, "10uF 16V", "+5VS", "GND", fp=C1206)
 part(pw, "TP", "Connector:TestPoint", "PG_5V", TP, {"1": "PG_5V"})
@@ -774,7 +776,45 @@ part(mc, "J", "Connector:USB_C_Receptacle_USB2.0_16P", "USB-C",
 R(mc, "5.1k", "USB_CC1", "GND")
 R(mc, "5.1k", "USB_CC2", "GND")
 part(mc, "PF", "Device:Polyfuse", "0.5A hold", "Resistor_SMD:R_1206_3216Metric",
-     {"1": "VBUS_IN", "2": "VBUS"}, "Bourns MF-MSMF050")
+     {"1": "VBUS_IN", "2": "VBUS_R"}, "Bourns MF-MSMF050")
+
+# ---- USB overvoltage cutoff -----------------------------------------------
+# Simulation showed a 'USB' brick that puts 9 V on VBUS lifting the whole
+# +5V rail to 8.4 V through D5, over the TJA1051's 6 V absolute maximum --
+# the buck can source but not sink, so the rail goes wherever the brick
+# pushes it. A plain 5.1k CC pull-down means a compliant PD source never
+# offers more than 5 V; this guards against the QC bricks and dumb "12 V
+# USB" adapters that do not ask.
+#
+# Same recipe as the sensor-rail switch, with the TLV431 as the brain: the
+# P-FET passes VBUS_R to VBUS by default (gate held low), and above the
+# 1.24 V x 127.4/27.4 = 5.77 V trip the TLV431 conducts, the PNP pulls the
+# gate up to the source, and the switch opens. 5.77 V sits above any
+# compliant 5 V source's 5.25 V ceiling and below the 6 V it protects.
+# With the switch open the P-FET body diode points back at the brick, so
+# nothing leaks through. Off-the-shelf OVP switches were checked first:
+# the TPS25200 class cuts off around 7 V, which is no protection at all
+# for a 6 V limit.
+part(mc, "Q", "Device:Q_PMOS_GSD", "AO3401A", SOT23,
+     {"1": "VBUS_G", "2": "VBUS_R", "3": "VBUS"}, "Alpha & Omega AO3401A",
+     "USB OVP series switch: source faces the connector so the body diode "
+     "blocks toward the board when the switch is open", lcsc="C15127")
+R(mc, "100k", "VBUS_G", "GND", note="Switch on by default")
+part(mc, "Q", "Device:Q_PNP_BEC", "MMBT3906", SOT23,
+     {"1": "VBUS_OV", "2": "VBUS_R", "3": "VBUS_G"}, "onsemi MMBT3906",
+     "Pulls the P-FET gate to its source on overvoltage", lcsc="C8544")
+R(mc, "10k", "VBUS_R", "VBUS_OV",
+  note="Holds the PNP off while the TLV431 is not conducting")
+part(mc, "U", "Reference_Voltage:TL431DBZ", "TLV431A", SOT233,
+     {"1": "VBUS_OV", "2": "VBUS_OVS", "3": "GND"}, "TLV431ASN1T1G",
+     "OVP comparator; conducts above the divider trip and opens the switch. "
+     "Same pinout caution as the power-fail TLV431: confirm K/REF/A against "
+     "the datasheet of the exact part ordered")
+R(mc, "100k 1%", "VBUS_R", "VBUS_OVS", note="OVP divider upper leg")
+R(mc, "27.4k 1%", "VBUS_OVS", "GND",
+  note="Trip at 1.24V x 127.4/27.4 = 5.77V: above a compliant source's "
+       "5.25V ceiling, below the TJA1051's 6V absolute maximum")
+
 part(mc, "D", "Device:D_Schottky", "40V 1A", SOD123, {"1": "+5V", "2": "VBUS"},
      "PMEG4010", "OR-ing: bench USB can power the board, but the 5V buck "
      "(5.00V) reverse-biases it whenever the car is connected")
@@ -785,7 +825,16 @@ C(mc, "100nF 16V", "VBUS", "GND",
 part(mc, "U", "Power_Protection:USBLC6-2SC6", "USBLC6-2SC6", SOT236,
      {"1": "USB_DP_CON", "2": "GND", "3": "USB_DM_CON",
       "4": "USB_DM", "5": "VBUS", "6": "USB_DP"},
-     "USBLC6-2SC6", "USB ESD clamp", lcsc="C7519")
+     "USBLC6-2SC6", "USB ESD clamp, behind the OVP switch so its own 5.5 V "
+     "VBUS-pin limit is honoured too", lcsc="C7519")
+# The CC pins are the FIRST contacts a plug mates, so they take the cable's
+# static charge before anything else -- and until now they landed on bare
+# 5.1k resistors. Same part as the data-line clamp, one more instance; a
+# fried CC pin is invisible damage that presents as "USB stopped working".
+part(mc, "U", "Power_Protection:USBLC6-2SC6", "USBLC6-2SC6", SOT236,
+     {"1": "USB_CC1", "2": "GND", "3": "USB_CC2", "5": "VBUS"},
+     "USBLC6-2SC6", "CC-pin ESD clamp; flow-through pins 4/6 unused",
+     lcsc="C7519", nc=("4", "6"))
 
 part(mc, "J", "Connector_Generic:Conn_01x04", "UART0", HDR4,
      {"1": "+3V3", "2": "UART_TX", "3": "UART_RX", "4": "GND"})
@@ -860,11 +909,35 @@ part(sd, "J", "Connector:Micro_SD_Card_Det1", "microSD push-pull",
      "Hirose DM3D-SF", "Push-pull socket; DET is the card-present switch",
      lcsc="C719027")
 
-part(sd, "Q", "Device:Q_PMOS_GSD", "-20V 2.3A P-ch", SOT23,
+# The card contacts are touched at every swap -- by hand, in a paddock, in
+# whatever the weather is doing -- and until now the only thing between an
+# insertion-day static discharge and the ESP32's GPIO was the ESP32's own
+# ~2 kV pin diodes. Two quad arrays clamp every card contact. VP goes to
+# +3V3 rather than the switched SD_VDD so the clamps reference a rail that
+# is alive even while the card power is cycled off.
+part(sd, "U", "Power_Protection:SRV05-4", "SRV05-4",
+     "Package_TO_SOT_SMD:SOT-23-6",
+     {"1": "SD_CLK_C", "3": "SD_CMD_C", "4": "SD_D0_C", "6": "SD_D1_C",
+      "2": "GND", "5": "+3V3"},
+     "Semtech SRV05-4.TCT", "Card-slot ESD clamp, CLK/CMD/D0/D1",
+     lcsc="C13612")
+part(sd, "U", "Power_Protection:SRV05-4", "SRV05-4",
+     "Package_TO_SOT_SMD:SOT-23-6",
+     {"1": "SD_D2_C", "3": "SD_D3_C", "4": "SD_CD",
+      "2": "GND", "5": "+3V3"},
+     "Semtech SRV05-4.TCT", "Card-slot ESD clamp, D2/D3/CD",
+     lcsc="C13612", nc=("6",))
+
+# The SD bus is the most likely thing to need a scope at bring-up, and both
+# of these nets otherwise exist only as fine-pitch SMD pads.
+part(sd, "TP", "Connector:TestPoint", "SD_CLK", TP, {"1": "SD_CLK_C"})
+part(sd, "TP", "Connector:TestPoint", "SD_CMD", TP, {"1": "SD_CMD_C"})
+
+part(sd, "Q", "Device:Q_PMOS_GSD", "DMG2301L", SOT23,
      {"1": "SD_PG", "2": "+3V3", "3": "SD_VDD"}, "DMG2301L",
      "High-side switch so firmware can power-cycle a wedged card")
 R(sd, "100k", "+3V3", "SD_PG", note="Default off")
-part(sd, "Q", "Device:Q_NMOS_GSD", "60V 300mA N-ch", SOT23,
+part(sd, "Q", "Device:Q_NMOS_GSD", "2N7002", SOT23,
      {"1": "SD_EN_G", "2": "GND", "3": "SD_PG"}, "2N7002",
      "Level shift for the P-ch gate. Prefer an AEC-Q101 equivalent: the "
      "standard 2N7002 is not automotive qualified")
@@ -897,7 +970,7 @@ C(cn, "100nF 16V", "+5V", "GND")
 C(cn, "100nF 16V", "+3V3", "GND")
 R(cn, "10k", "CAN_S", "GND", note="Default to normal (non-silent) mode")
 
-part(cn, "L", "Device:L_Coupled", "51uH CMC", "esp32autosport:L_CommonMode_TDK_ACT45B",
+part(cn, "L", "Device:L_Coupled", "51uH", "esp32autosport:L_CommonMode_TDK_ACT45B",
      {"1": "CANH_T", "2": "CAN_H", "3": "CANL_T", "4": "CAN_L"},
      "TDK ACT45B-510-2P-TL003",
      "AEC-Q200 CAN choke; footprint pads renumbered so symbol winding 1-2 is "
@@ -1491,7 +1564,7 @@ def emit_sheet(libs, sh, sheet_uuid, page):
         "",
         "  (title_block",
         '    (title "%s")' % TITLE,
-        '    (date "")',
+        '    (date "%s")' % DATE,
         '    (rev "%s")' % REV,
         '    (company "%s")' % COMPANY,
         '    (comment 1 "%s -- %s")' % (sh["name"], sh["desc"]),
@@ -1705,7 +1778,7 @@ def emit_root(sheet_uuids):
         "",
         "  (title_block",
         '    (title "%s")' % TITLE,
-        '    (date "")',
+        '    (date "%s")' % DATE,
         '    (rev "%s")' % REV,
         '    (company "%s")' % COMPANY,
         '    (comment 1 "Root sheet -- see the block sheets below")',
@@ -1920,6 +1993,7 @@ def main():
     alternates = {
         "Device:Q_NMOS_GSD": ("Transistor_FET:Q_NMOS_GSD",),
         "Device:Q_PMOS_GSD": ("Transistor_FET:Q_PMOS_GSD",),
+        "Device:Q_PNP_BEC": ("Transistor_BJT:Q_PNP_BEC",),
     }
     resolved = {}
     for sh in SHEETS:

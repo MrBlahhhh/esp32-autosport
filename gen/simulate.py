@@ -997,23 +997,33 @@ def sim_crank(plots):
 
 # ==================================================================== usb ===
 def sim_usb(plots):
-    head("7. Non-compliant USB supply backfeeding the 5 V rail")
-    print("    A 'USB' brick that puts 9 or 12 V on VBUS reaches +5V through")
-    print("    PF2 and D5.  The buck can source but not sink, so the rail")
-    print("    goes wherever the brick pushes it.")
+    head("7. Non-compliant USB supply vs the OVP cutoff")
+    print("    Without protection a brick that negotiates 9 V lifts the whole")
+    print("    +5V rail to 8.4 V through PF2 and D5 (the buck can source but")
+    print("    not sink), over the TJA1051's 6 V absolute maximum.  The board")
+    print("    now carries a TLV431 + AO3401 series cutoff at 5.77 V; this")
+    print("    deck sweeps the brick and checks the rail stays inside 6 V.")
     fails = []
-    deck = """* hostile USB brick into the VBUS -> D5 -> +5V path
+    deck = """* hostile USB brick vs the TLV431/AO3401 OVP cutoff
 %s
 .model DOR D(IS=1e-9 N=1.05 RS=0.05 BV=40 IBV=1m)
 Vbrick vb 0 DC 12
-Rpf2   vb vbus 0.3
+Rpf2   vb vr 0.3
+
+* OVP divider off the raw side, and the switch as a behavioral element:
+* conducting while the divider sits below the TLV431's 1.24 V reference,
+* smoothly opening above it.  The P-FET body diode points at the brick,
+* so an open switch really is open toward the board.
+Rdu  vr sen 100k
+Rdl  sen 0  27.4k
+Bsw  vr vbus I = (V(vr)-V(vbus))/0.05 / (1 + exp((V(sen) - 1.24)/0.003))
+Rlk  vr vbus 10meg
+
 D5     vbus v5 DOR
-* The buck sources and cannot sink: a 5 V source behind its own ideal
-* diode is exactly that, and unlike a clamped B-source it converges.
 Vbuck  bk 0 DC 5.05
 Dbuck  bk v5 DOR
-* the board's 5 V load
 Rload  v5 0 25
+Cv5    v5 0 22u
 .control
 set filetype=ascii
 set wr_singlescale
@@ -1023,20 +1033,21 @@ quit
 .endc
 .end
 """ % MODELS
-    d = run_deck("usb_backfeed", deck, ["v(v5)", "v(vbus)"])
-    vin, v5 = d["x"], d["v(v5)"]
-    at9 = float(np.interp(9.0, vin, v5))
-    at12 = float(np.interp(12.0, vin, v5))
-    print("    brick at  9 V -> +5V rail sits at %5.2f V" % at9)
-    print("    brick at 12 V -> +5V rail sits at %5.2f V" % at12)
-    print("    Parts on +5V and their limits: TJA1051 (6 V), 74AHCT1G125")
-    print("    (7 V), WS2812 header, the sensor-rail switch (30 V gate).")
-    if at9 > 6.0:
-        fails.append("a 9 V USB brick lifts +5V to %.1f V, over the "
-                     "TJA1051's 6 V absolute maximum. Mitigation is one "
-                     "part: replace D5 with an ideal-diode/OVP switch, or "
-                     "accept that only compliant 5 V sources are supported "
-                     "(the README says which was chosen)" % at9)
+    d = run_deck("usb_ovp", deck, ["v(v5)", "v(vbus)"])
+    vin, v5, vbus = d["x"], d["v(v5)"], d["v(vbus)"]
+    at5 = float(np.interp(5.0, vin, vbus))
+    pk = float(v5.max())
+    cut = vin[vbus < vin - 1.0]
+    print("    brick at 5.0 V -> VBUS %.2f V (normal bench operation)" % at5)
+    print("    switch opens at ~%.2f V of brick" % (float(cut[0]) if len(cut)
+                                                    else float("nan")))
+    print("    worst +5V across the 4.5-14 V sweep: %.2f V" % pk)
+    if pk > 6.0:
+        fails.append("+5V still reaches %.2f V somewhere in the sweep -- "
+                     "the OVP trip or the divider is wrong" % pk)
+    if at5 < 4.6:
+        fails.append("a compliant 5 V source only delivers %.2f V of VBUS "
+                     "through the switch" % at5)
     return fails
 
 
