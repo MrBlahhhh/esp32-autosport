@@ -76,9 +76,9 @@ be a small prototype run.**
 
 ```
 J1.1 ──[F1 2A]──┬──[FB1 ferrite]── LM74700-Q1 + Q1 (ideal diode) ──┬── +VBAT
-                │                                                  ├── C2 100µF bulk
-                └── D1 SMCJ40CA clamp                              ├── U2 LM5164 ─→ +5V ─[PF1]─→ +5VS
-                    (ahead of the FET)                             └── U3 LM5164 ─→ +3V3
+                │                                                  ├── C3 100µF bulk
+                └── D1 SMCJ40CA clamp                              ├── U3 LM5164 ─→ +5V ─[PF1]─→ +5VS
+                    (ahead of the FET)                             └── U4 LM5164 ─→ +3V3
 ```
 
 ### Reverse-battery protection
@@ -137,11 +137,11 @@ out of scope rather than marginal.
 
 ### Why two bucks instead of a buck plus an LDO
 
-`U2` (+5 V) and `U3` (+3V3) both run directly off `+VBAT`. It costs one extra
+`U3` (+5 V) and `U4` (+3V3) both run directly off `+VBAT`. It costs one extra
 inductor versus 12 V→5 V→3.3 V cascading, and buys two things:
 
-1. **Fault isolation.** A shorted 5 V sensor wire in the harness loads `U2`
-   and trips `PF1`, but `U3` and the MCU never see it. A cascaded 3.3 V rail
+1. **Fault isolation.** A shorted 5 V sensor wire in the harness loads `U3`
+   and trips `PF1`, but `U4` and the MCU never see it. A cascaded 3.3 V rail
    would collapse with the 5 V rail.
 2. **No heat.** A 5 V→3.3 V linear at 600 mA burns ~1 W, which in an engine
    bay at 85 °C ambient is a thermal problem in a small package. A switcher
@@ -259,7 +259,7 @@ Every channel lands on **ADC1** (`GPIO1`, `GPIO2`, `GPIO4`, `GPIO5`), which is
 the half of the ESP32-S3 ADC that keeps working while WiFi is active. ADC2 is
 unusable with WiFi up — that constraint drove the pin assignment.
 
-The same four conditioned nodes also feed `U8`, an **ADS1115** (16-bit
+The same four conditioned nodes also feed `U13`, an **ADS1115** (16-bit
 delta-sigma, on the existing I²C bus at 0x48). The ESP32-S3's internal ADC is
 only good for ±1–2 % even after calibration — ±0.2 AFR on a 0–5 V wideband
 output — so firmware picks per channel: fast-and-rough on the internal ADC, or
@@ -268,7 +268,7 @@ slow-and-accurate (up to 860 SPS) on the ADS1115. The divider resistors are
 and the note in the schematic records that the 1 k series resistor is part of
 the divider chain — the exact scale factor is a firmware calibration constant.
 
-`R63` (100 k) and `R64` (10 k) divide `+VBAT` by 11 onto `GPIO6` for
+`R77` (100 k) and `R64` (10 k) divide `+VBAT` by 11 onto `GPIO6` for
 battery-voltage logging: 14.0 V reads 1.27 V, and the 36 V top of the input
 range reads 3.27 V.
 
@@ -276,7 +276,7 @@ range reads 3.27 V.
 
 ## 4. CAN
 
-`U7` is a TJA1051T/3 — 5 V bus drive with a separate `VIO` pin tied to +3V3, so
+`U12` is a TJA1051T/3 — 5 V bus drive with a separate `VIO` pin tied to +3V3, so
 the ESP32 sees 3.3 V logic with no level shifter. `S` is pulled low by `R54`
 (10 k) so the transceiver comes up in normal mode with the MCU still in reset;
 `GPIO21` can raise it for silent (listen-only) sniffing. `CAN_TX` has no
@@ -288,14 +288,14 @@ Bus side, in order from the transceiver out:
 - `L3` common-mode choke — TDK ACT45B-510-2P-TL003, 51 µH, AEC-Q200. The
   footprint is project-local (`footprints/esp32autosport.pretty`) and its pads
   are renumbered so the symbol's winding 1–2 maps to the package.
-- Split termination: `R41`/`R42`, two 60.4 Ω in series with `C28` 4.7 nF to
+- Split termination: `R55`/`R56`, two 60.4 Ω in series with `C28` 4.7 nF to
   ground at the midpoint. Split termination beats a single 120 Ω resistor
   because it gives the common-mode noise somewhere to go instead of
   reflecting it.
 - `JP1` in series with the top half — **bridged by default**, matching the
   Autosport Labs convention of shipping terminated. Cut the trace when the
   board is a mid-bus node rather than an end node.
-- `D8`/`D9` SMAJ26CA bidirectional clamps to ground on each line.
+- `D6`/`D7` SMAJ26CA bidirectional clamps to ground on each line.
 
 CAN_H/CAN_L run to `J1` pins 3 and 4, so one 4-pin JST-PH carries power and bus
 in a single harness.
@@ -306,7 +306,7 @@ A BMW/MINI K+DCAN cable carries **two unrelated buses**, and this board has
 hardware for exactly one of them.
 
 **D-CAN — yes, already.** Diagnostic CAN is ISO 15765-4: plain 500 kbit/s CAN
-on OBD-II pins 6 and 14, which is what `U7` and the TWAI controller do. `J1`
+on OBD-II pins 6 and 14, which is what `U12` and the TWAI controller do. `J1`
 maps onto an OBD-II plug with nothing in between — pin 16 to `J1.1`, pins 4/5
 to `J1.2`, pin 6 to `J1.3`, pin 14 to `J1.4` — so one cable both powers the
 board and connects it to the bus. What is left is software: ISO-TP
@@ -357,7 +357,7 @@ throughput, which matters when logging a busy bus.
   SPI mode when the card powers up. Card detect keeps a weaker 47 kΩ: it is
   a mechanical contact, not a bus line, so there is no reason to burn the
   standing current.
-- `Q2`/`Q3` form a high-side switch on the card supply, driven by `GPIO7`, so
+- `Q6`/`Q7` form a high-side switch on the card supply, driven by `GPIO7`, so
   firmware can hard power-cycle a card that has locked up mid-write. This is
   the single most useful recovery mechanism in a logger; SD cards do wedge.
 - `GPIO8` reads the socket's card-detect switch.
@@ -449,14 +449,14 @@ Two more issues surfaced while reading the datasheet, both fixed:
   output, CB into FB: 121 k / 3.3 nF / 270 pF on 5 V, 95.3 k / 3.3 nF / 270 pF
   on 3.3 V), sized per TI's design example for ≈20 mV of ramp at 14 V in.
 
-5. ~~ESP32-S3 ADC linearity~~ — resolved for the AFR use case: `U8`, an
+5. ~~ESP32-S3 ADC linearity~~ — resolved for the AFR use case: `U13`, an
    onboard ADS1115 (16-bit, I²C), now shares the four conditioned input
    nodes, and the divider resistors are 0.1 % thin-film. See §3.
 
 6. ~~Layout rules~~ — the board is laid out now (§9). The switching-regulator
    rules this item called for are all in `gen/generate_pcb.py` and
    `gen/route_bucks.py` as fixed placements: tight input-cap loops on
-   `U2`/`U3` with `C4` at the VIN pin, a solid GND plane under the whole
+   `U3`/`U4` with `C4` at the VIN pin, a solid GND plane under the whole
    ideal-diode block, and the CAN choke beside `J1`.
 
 Still open for a second pair of eyes:
@@ -468,10 +468,10 @@ Still open for a second pair of eyes:
 
 Found later, during the pin audit (§6), and worth knowing rather than fixing:
 
-9. The WS2812 buffer input floats at boot. `GPIO48` reaches `U6` pin 2 through
+9. The WS2812 buffer input floats at boot. `GPIO48` reaches `U9` pin 2 through
    a 33 Ω series resistor with no pull-down, so that CMOS input is undefined
    from power-on until firmware drives it — a brief random flicker on the
-   strip and a milliamp or so of shoot-through in `U6`. Harmless, and cheaper
+   strip and a milliamp or so of shoot-through in `U9`. Harmless, and cheaper
    to fix in firmware (drive `GPIO48` low first) than to respin for.
 10. `J7` (Spare IO) has three signals and no ground pin. Use `J8`'s ground two
     headers along. Also note all three of its pins are strapping pins — see
@@ -633,7 +633,7 @@ belongs.
 does not want a routed track, it wants a via next to it; doing all 113 of them
 up front means the router treats them as obstacles and has only signals left to
 solve. 110 get a via; the three that do not are the exposed thermal pads of
-`U2`, `U3` and the module, which the pour bonds to directly. `stitch_planes.py` places each via with real point-to-rectangle and
+`U3`, `U4` and the module, which the pour bonds to directly. `stitch_planes.py` places each via with real point-to-rectangle and
 point-to-segment distance checks -- bounding boxes are far too pessimistic in a
 dense field and refuse room that is really there.
 
@@ -970,12 +970,12 @@ passives where any equivalent will do.
 Take *Basic* parts over *Extended* where the value and package match; Extended
 parts add a setup fee each. Two things to hold to: the 0.1 % divider resistors
 (`R43`–`R62`) must stay **0.1 %**, that tolerance is the whole point of the
-analog front end, and `C2`/`C3`/`C4` must stay **100 V** rated.
+analog front end, and `C3`/`C6`/`C7` (the bulk and ride-through electrolytics) must stay **100 V** rated.
 
 **6 — Check the placement preview, carefully.** This is the step that bites
 people. JLC's library orients some packages differently from KiCad, so
 polarised parts can come back rotated 180°. Look hard at every diode (`D1`–
-`D14`), the electrolytic `C2`, the LEDs, and the ICs, and correct any that
+`D14`), the electrolytics `C3`/`C6`/`C7`, the LEDs, and the ICs, and correct any that
 face the wrong way in their previewer. Everything else is symmetrical and
 cannot go on backwards.
 
