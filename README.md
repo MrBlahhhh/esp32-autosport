@@ -52,7 +52,7 @@ carries the fixes from an external datasheet review (§7): the LM74700 enable
 divider, the ANODE capacitor, two TVS standoff corrections, transient clamps
 on the analog harness inputs, and a dozen smaller items. `fab/` holds the
 Gerbers, drill, BOM and pick-and-place in JLCPCB's format, BOM and CPL verified
-to list the same 170 designators. See §9 for how the board is built, §10 for
+to list the same 167 designators. See §9 for how the board is built, §10 for
 what simulation and the physical audit say about it, and §11 for
 the ordering steps. **Nothing has ever been fabricated — the first order should
 be a small prototype run.**
@@ -968,15 +968,24 @@ the dash enclosure around.
 ### Ordering note: BOM part-number coverage
 
 `fab/bom.csv` is in JLCPCB's format (`Comment,Designator,Footprint,JLCPCB
-Part #`), and BOM/CPL designators are machine-verified to agree. 23 lines
-carry LCSC numbers **checked against the live catalogue on 2026-08-12** (see
-below); 40 blank lines are plain 0805/1206 R/C that JLC's order flow
-auto-matches from value + package. **Nine extended lines must be matched by
-hand in the order UI** (search the Comment, pick the stocked equivalent): the
-330 uF/100 V and 100 uF/100 V electrolytics, the green LED, PMEG4010, the
-0466 2 A fuse, both polyfuses, DMG2301L, the TL3342 buttons and
-TLV431ASN1T1G. Never guess a
-C-number into the file -- a wrong part number assembles the wrong part.
+Part #`), and BOM/CPL designators are machine-verified to agree. 30 lines
+carry part numbers **checked against the live catalogue**; the other 40 are
+plain 0805/1206 R/C that JLC's order flow auto-matches from value + package.
+**Nothing is left to pick by hand.** The nine lines that used to be blank were
+filled in on 2026-08-13, after a real order run showed what the fuzzy matcher
+does when the field is empty. Never guess a C-number into the file -- a wrong
+part number assembles the wrong part, and two of the ones already in here
+turned out to be exactly that.
+
+**Three parts are deliberately absent from `fab/`** and are hand-fitted:
+`C3`, `C6` and `C7`, the bulk and ride-through electrolytics. JLCPCB's SMD
+aluminium electrolytic library stops at **47 µF** once 100 V is required, so
+there is no part to order: `C3` matched nothing at all, and the only offer for
+`C6`/`C7` was `C3034842`, a **through-hole** radial can on an SMD land
+pattern. Buy all three separately and solder them yourself — they are the
+largest parts on the board and the easiest to hand-solder. This is not a
+consequence of the 220 → 330 µF change; the 220 µF part was equally
+unavailable, and nobody had run a catalogue match to find out.
 
 ## 11. Handoff — remaining work
 
@@ -1031,7 +1040,7 @@ and pin the stackup you were going to get regardless.
 quantity 5, tooling holes *Added by JLCPCB*. Every part is on the top face.
 
 **4 — Upload the parts files.** BOM is `fab/bom.csv`, CPL (they may call it
-"pick and place") is `fab/positions.csv`. Both list the same **170
+"pick and place") is `fab/positions.csv`. Both list the same **167
 designators** — they have to, because JLC pairs them up by designator and
 anything present in one and missing from the other simply does not get
 assembled. The eight through-hole connectors are deliberately in neither
@@ -1043,8 +1052,9 @@ line falls through to the fuzzy text matcher, and you get offered a mechanical
 limit switch for a Schottky diode named "40V 1A" and a real WS2812 LED for a
 header named WS2812. Both happened.
 
-**5 — Match the parts.** **23** lines arrive with a part number and match
-themselves; the other **49** you pick on this screen. Most carry a specific
+**5 — Match the parts.** **30** lines arrive with a part number and match
+themselves; the other **40** are generic 0805/1206 R/C that JLC auto-matches
+from value + package. **There is nothing left to pick by hand.** Most carry a specific
 manufacturer part number and should match on it — the rest are generic
 passives where any equivalent will do.
 Take *Basic* parts over *Extended* where the value and package match; Extended
@@ -1063,7 +1073,7 @@ cannot go on backwards.
 
 ### The eight parts you solder yourself
 
-JLC places all 170 surface-mount parts. These eight are through-hole, and
+JLC places all 167 surface-mount parts. These eight are through-hole, and
 through-hole assembly is a separate, pricier service — it is easier to buy
 them and solder them yourself. They are large, widely spaced, and a good
 first soldering job.

@@ -602,7 +602,7 @@ part(pw, "U", "Reference_Voltage:TL431DBZ", "TLV431A", SOT233,
      "this package -- CONFIRM against the datasheet for the exact part "
      "ordered. If REF and A are swapped the part simply never conducts and "
      "PWR_FAIL sits permanently asserted: loud, harmless, and obvious on the "
-     "bench, but it will not be caught by ERC or DRC")
+     "bench, but it will not be caught by ERC or DRC", lcsc="C127592")
 R(pw, "10k", "+3V3", "PWR_FAIL",
   note="Cathode pull-up. 10k gives the part 330uA, over the TLV431's 100uA "
        "minimum cathode current. A 2.5V TL431 would need 1mA and so a 2.2k "
@@ -716,7 +716,8 @@ part(pw, "PF", "Device:Polyfuse", "0.2A PTC", "Resistor_SMD:R_1206_3216Metric",
      {"1": "VSENS_SW", "2": "VSENS_F"}, "Bourns MF-MSMF020",
      "Resettable: a shorted sensor wire trips this, not the board. Now behind "
      "the load switch, so a short is also something firmware can clear by "
-     "dropping SENS_EN, rather than waiting for the fuse to cool")
+     "dropping SENS_EN, rather than waiting for the fuse to cool",
+     lcsc="C719178")
 part(pw, "FB", "Device:L", "600R", "Inductor_SMD:L_0805_2012Metric",
      {"1": "VSENS_F", "2": "+5VS"}, "Wurth 742792022")
 C(pw, "10uF 16V", "+5VS", "GND", fp=C1206)
@@ -728,6 +729,7 @@ part(pw, "D", "Device:D_Zener", "SMAJ6.0A", SMA, {"1": "+5VS", "2": "GND"},
      "not 5.0V: a 5.0V part on a 5.0V rail leaks up to 800uA continuously", lcsc="C223993")
 
 part(pw, "D", "Device:LED", "green", LED0805, {"1": "PWR_LED_K", "2": "+3V3"},
+     lcsc="C2297",  # KT-0805G, 525 nm emerald green, verified 2026-08-13
      note="The board's only LED: +3V3 is up, so the whole supply chain came "
           "through -- battery, ideal diode, and both converters")
 R(pw, "1k", "PWR_LED_K", "GND")
@@ -769,10 +771,11 @@ R(mc, "10k", "+3V3", "MCU_EN")
 C(mc, "1uF 16V", "MCU_EN", "GND", note="EN reset delay")
 part(mc, "SW", "Switch:SW_Push", "RESET", "Button_Switch_SMD:SW_SPST_TL3342",
      {"1": "MCU_EN", "2": "GND"}, "TL3342F160QG",
-     "Genuine E-Switch is scarce at LCSC; any 5.2mm gull-wing tact fits")
+     "Genuine E-Switch is scarce at LCSC; any 5.2mm gull-wing tact fits",
+     lcsc="C2886898")
 R(mc, "10k", "+3V3", "MCU_BOOT")
 part(mc, "SW", "Switch:SW_Push", "BOOT", "Button_Switch_SMD:SW_SPST_TL3342",
-     {"1": "MCU_BOOT", "2": "GND"}, "TL3342F160QG")
+     {"1": "MCU_BOOT", "2": "GND"}, "TL3342F160QG", lcsc="C2886898")
 C(mc, "10uF 16V", "+3V3", "GND", fp=C1206)
 C(mc, "100nF 16V", "+3V3", "GND")
 C(mc, "100nF 16V", "+3V3", "GND")
@@ -790,7 +793,7 @@ part(mc, "J", "Connector:USB_C_Receptacle_USB2.0_16P", "USB-C",
 R(mc, "5.1k", "USB_CC1", "GND")
 R(mc, "5.1k", "USB_CC2", "GND")
 part(mc, "PF", "Device:Polyfuse", "0.5A hold", "Resistor_SMD:R_1206_3216Metric",
-     {"1": "VBUS_IN", "2": "VBUS_R"}, "Bourns MF-MSMF050")
+     {"1": "VBUS_IN", "2": "VBUS_R"}, "Bourns MF-MSMF050", lcsc="C17313")
 
 # ---- USB overvoltage cutoff -----------------------------------------------
 # Simulation showed a 'USB' brick that puts 9 V on VBUS lifting the whole
@@ -828,7 +831,7 @@ part(mc, "U", "Reference_Voltage:TL431DBZ", "TLV431A", SOT233,
      {"1": "VBUS_OV", "2": "VBUS_OVS", "3": "GND"}, "TLV431ASN1T1G",
      "OVP comparator; conducts above the divider trip and opens the switch. "
      "Same pinout caution as the power-fail TLV431: confirm K/REF/A against "
-     "the datasheet of the exact part ordered")
+     "the datasheet of the exact part ordered", lcsc="C127592")
 R(mc, "100k 1%", "VBUS_R", "VBUS_OVS", note="OVP divider upper leg")
 R(mc, "27.4k 1%", "VBUS_OVS", "GND",
   note="Trip at 1.24V x 127.4/27.4 = 5.77V: above a compliant source's "
@@ -836,7 +839,7 @@ R(mc, "27.4k 1%", "VBUS_OVS", "GND",
 
 part(mc, "D", "Device:D_Schottky", "40V 1A", SOD123, {"1": "+5V", "2": "VBUS"},
      "PMEG4010", "OR-ing: bench USB can power the board, but the 5V buck "
-     "(5.00V) reverse-biases it whenever the car is connected")
+     "(5.00V) reverse-biases it whenever the car is connected", lcsc="C193342")
 C(mc, "10uF 16V", "VBUS", "GND", fp=C1206)
 C(mc, "100nF 16V", "VBUS", "GND",
   note="USBLC6-2SC6 VBUS pin decoupling; the ST datasheet asks for this "
@@ -891,7 +894,8 @@ R(mc, "100", "LED_DIN", "LED_DIN_J",
        "directly, and a WS2812 strip is metres of unterminated lead")
 part(mc, "PF", "Device:Polyfuse", "0.5A hold", "Resistor_SMD:R_1206_3216Metric",
      {"1": "+5V", "2": "LED_5V"}, "Bourns MF-MSMF050",
-     "Fused tap for the shift-light strip (8x WS2812 ~0.5 A worst case)")
+     "Fused tap for the shift-light strip (8x WS2812 ~0.5 A worst case)",
+     lcsc="C17313")
 part(mc, "J", "Connector_Generic:Conn_01x03", "WS2812", HDR3,
      {"1": "LED_5V", "2": "LED_DIN_J", "3": "GND"},
      note="Shift-light header: +5V / 5V-logic DIN / GND")
@@ -955,7 +959,8 @@ part(sd, "TP", "Connector:TestPoint", "SD_CMD", TP, {"1": "SD_CMD_C"})
 
 part(sd, "Q", "Device:Q_PMOS_GSD", "DMG2301L", SOT23,
      {"1": "SD_PG", "2": "+3V3", "3": "SD_VDD"}, "DMG2301L",
-     "High-side switch so firmware can power-cycle a wedged card")
+     "High-side switch so firmware can power-cycle a wedged card",
+     lcsc="C7472914")
 R(sd, "100k", "+3V3", "SD_PG", note="Default off")
 part(sd, "Q", "Device:Q_NMOS_GSD", "2N7002", SOT23,
      {"1": "SD_EN_G", "2": "GND", "3": "SD_PG"}, "2N7002",

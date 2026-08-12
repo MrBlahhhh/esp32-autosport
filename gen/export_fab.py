@@ -98,8 +98,32 @@ def through_hole_refs():
     # if it ever is reached, say so instead of shipping a bad BOM.
     import pcbnew
     board = pcbnew.LoadBoard(BOARD)
-    return {fp.GetReference() for fp in board.GetFootprints()
-            if fp.GetAttributes() & pcbnew.FP_THROUGH_HOLE}
+    return ({fp.GetReference() for fp in board.GetFootprints()
+             if fp.GetAttributes() & pcbnew.FP_THROUGH_HOLE}
+            | HAND_FIT_SMD)
+
+
+# SMD parts JLC cannot supply, so they must not appear in either file.
+#
+# Checked against the live catalogue on 2026-08-13: JLCPCB's SMD aluminium
+# electrolytic library stops at 47 uF once you need 100 V (largest is
+# C371305, 47 uF, D10xL10mm). There is no 100 uF and no 330 uF SMD part at
+# that voltage, so:
+#
+#   C3       100 uF 100 V   no match at all -- JLC returned nothing
+#   C6, C7   330 uF 100 V   the only offer was C3034842, which is
+#                           "Plugin, D16xL20mm" -- a THROUGH-HOLE radial part
+#                           on an SMD land pattern. It would not fit the pads
+#                           and could not be placed by the SMT line.
+#
+# Leaving them in the BOM is worse than removing them: the through-hole match
+# looks plausible in the order UI and nothing downstream objects. Buy all
+# three separately and hand-solder them -- they are the three largest parts on
+# the board and the easiest things on it to solder by hand.
+#
+# This is not a consequence of the 220 -> 330 uF change. The 220 uF part was
+# equally unavailable; nobody had run a catalogue match before to find out.
+HAND_FIT_SMD = {"C3", "C6", "C7"}
 
 
 def reexec_under_kicad_python():
