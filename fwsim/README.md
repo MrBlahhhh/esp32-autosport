@@ -75,6 +75,31 @@ Each run writes four files to `sim/fw/`: the scenario, a `.csv` trace, a `.log`
 of the firmware's own serial output with virtual timestamps, and
 `.faults.txt`. Every number in the report can be re-derived from them.
 
+## How good are these tests?
+
+Measured, not asserted. `gen/mutate_firmware.py` takes the ported firmware,
+introduces sixteen real defects one at a time -- a constant carried over from
+the other board, a deleted line, a transposed pin -- rebuilds, and re-runs the
+studies against each mutant. A defect that still passes is a hole in the
+suite, not a harmless change.
+
+The first run caught **7 of 16 (44 %)**, and the survivors all had one shape:
+the LED bands, the stale blanking, the bus-off recovery and the notify gating
+were only ever exercised against the vendored R53 sketch on the `s3zero`
+model. The ported firmware inherited the confidence without ever being asked.
+Studies 13 and 14 exist because of that, and the suite now catches **16 of 16**.
+
+Run it after changing the firmware or the studies:
+
+```sh
+python gen/mutate_firmware.py          # ~5 min, rebuilds per mutation
+python gen/mutate_firmware.py --list   # what it tries
+```
+
+Two of the sixteen only fail because a check asserts on *warnings*, not just
+errors -- a WS2812 buffer left floating at boot, a card unmounted by pulling
+its supply. Both are legal C++ that a compiler and a DRC are equally blind to.
+
 ## Findings
 
 Faults are recorded once per (code, message) pair, so a bug inside a 20 ms loop

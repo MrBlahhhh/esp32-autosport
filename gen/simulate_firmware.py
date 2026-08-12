@@ -564,19 +564,19 @@ trace 50
     return out
 
 
-def study_stale(exes):
-    head("6. CAN goes quiet mid-drive")
-    scn = """board s3zero
+def study_stale(exes, sketch="r53", board="s3zero", rail="none"):
+    head("6. CAN goes quiet mid-drive (%s on %s)" % (sketch, board))
+    scn = f"""board {board}
 duration 9000
 trace 20
 @0 vbat 13.8
-@0 sensorrail 1 none
+@0 sensorrail 1 {rail}
 @0 canid 0x316
 @0 canrate 100
 @0 rpm 5200
 @3000 canrate 0
 """
-    r = Run("stale_s3zero", exes["r53"], scn)
+    r = Run("stale_%s" % board, exes[sketch], scn)
     lit_before = r.at(2900)["leds_lit"]
     lit_at_4s = r.at(4500)["leds_lit"]
     lit_after = r.at(6000)["leds_lit"]
@@ -589,19 +589,19 @@ trace 20
     return r
 
 
-def study_busoff(exes):
-    head("7. Bus-off recovery")
-    scn = """board s3zero
+def study_busoff(exes, sketch="r53", board="s3zero", rail="none"):
+    head("7. Bus-off recovery (%s on %s)" % (sketch, board))
+    scn = f"""board {board}
 duration 9000
 trace 20
 @0 vbat 13.8
-@0 sensorrail 1 none
+@0 sensorrail 1 {rail}
 @0 canid 0x316
 @0 canrate 100
 @0 rpm 5200
 @3000 busoff
 """
-    r = Run("busoff_s3zero", exes["r53"], scn)
+    r = Run("busoff_%s" % board, exes[sketch], scn)
     before = r.at(2900)["can_delivered"]
     after = r.rows[-1]["can_delivered"]
     print("    frames delivered by 2.9 s: %.0f" % before)
@@ -650,6 +650,111 @@ def _first_time(run, pred):
         if pred(row):
             return row["t_ms"]
     return None
+
+
+def study_ported_detail(exes):
+    """Behaviour the port inherited but nothing re-checked on this board.
+
+    Written after mutation testing (gen/mutate_firmware.py) put the suite's
+    catch rate at 44 %. Almost every survivor had the same shape: the LED
+    bands, the stale blanking, the bus-off recovery and the notify gating were
+    only ever exercised against the *vendored R53 sketch on the s3zero model*.
+    The ported firmware inherited the confidence without ever being asked.
+    """
+    head("13. The ported firmware's own behaviour, checked on this board")
+    print("  Everything below was previously only verified against the R53")
+    print("  sketch on the s3zero model, and assumed to carry over.")
+
+    r = Run("ported_bands", exes["autosport"], rpm_sweep("autosport", rail="5vs"))
+    for t, want, label in ((1500, 0, "dark below the 3000 rpm threshold"),
+                           (3000, 2, "one green pair at 3200 rpm"),
+                           (5000, 6, "three pairs, amber, at 6500 rpm")):
+        row = r.at(t)
+        ok = row["leds_lit"] == want
+        if t == 3000:
+            ok = ok and row["led_g"] == 255 and row["led_r"] == 0
+        if t == 5000:
+            ok = ok and row["led_r"] > 0 and row["led_g"] > 0
+        check(ok, "ported: " + label,
+              "lit=%d rgb=(%d,%d,%d)" % (row["leds_lit"], row["led_r"],
+                                         row["led_g"], row["led_b"]))
+
+    # The simulator raises warnings for things that are legal but wrong on this
+    # board -- a floating WS2812 buffer input at boot, a card unmounted by
+    # pulling its supply, a 1-bit mount. Nothing asserted on them, so all three
+    # survived mutation. They are not errors, but on the shipped firmware any
+    # of them appearing is a regression.
+    warns = [f for f in r.faults if f.startswith("WARN")]
+    check(not warns, "ported firmware raises no warnings either",
+          "; ".join(w.split(None, 3)[2] for w in warns) if warns else "")
+
+    # 2500 rpm sits between the real 3000 threshold and a plausible wrong one.
+    # Without a sample in that gap, moving the threshold to 2000 changed
+    # nothing any check looked at, and the mutation survived.
+    rt = Run("ported_threshold", exes["autosport"], """board autosport
+duration 4000
+trace 20
+@0 vbat 13.8
+@0 sensorrail 1 5vs
+@0 canid 0x316
+@0 canrate 100
+@0 rpm 2500
+""")
+    lit = max(row["leds_lit"] for row in rt.rows)
+    check(lit == 0, "ported: still dark at 2500 rpm, just under the threshold",
+          "%d LEDs lit -- the shift point has moved" % lit)
+
+    study_stale(exes, sketch="autosport", board="autosport", rail="5vs")
+    study_busoff(exes, sketch="autosport", board="autosport", rail="5vs")
+
+    head("14. Paths the port has that the R53 sketch never exercised here")
+    # ADS1115: lazily probed, so it is only reached when the phone selects it.
+    # No autosport scenario ever did, which is why moving the I2C pins back to
+    # the R53 board's GPIO7/8 was invisible to the whole suite.
+    scn = rpm_sweep("autosport", rail="5vs", extra="@8000 ble hwmode 1\n")
+    scn = scn.replace("@0    sensorrail 1 5vs", "@0    sensorrail 1 5vs\n@0    ads 1")
+    ra = Run("ported_ads", exes["autosport"], scn)
+    show_faults(ra)
+    check(not ra.errors(), "selecting the ADS1115 brings up I2C on the right pins",
+          "%d errors" % len(ra.errors()))
+    check(ra.rows[-1]["notifies"] > 0, "still notifying after the mode switch",
+          "%.0f notifications" % ra.rows[-1]["notifies"])
+
+    # Notify gating: a phone is connected for a beat before it writes the CCCD.
+    # Notifying into that gap is what the sketch's comment warns about.
+    scn = """board autosport
+duration 6000
+trace 20
+@0 vbat 13.8
+@0 sensorrail 1 5vs
+@0 canid 0x316
+@0 canrate 100
+@0 rpm 3000
+@1000 ble connect
+"""
+    rn = Run("ported_nosub", exes["autosport"], scn)
+    check(rn.rows[-1]["notifies"] == 0,
+          "connected but unsubscribed: nothing is notified",
+          "%.0f notifications sent into a client that never wrote the CCCD"
+          % rn.rows[-1]["notifies"])
+
+    # The ISR drops SENS_EN itself, and that single register write is what
+    # separates the 154 ms window from the 75 ms one. Nothing asserted it.
+    ri, _codes = study_ignition(exes, "autosport", "sensen")
+    pf = float(ri.summary.get("PWR_FAIL_ms", "nan"))
+    shed = _first_time(ri, lambda row: row["sens_en"] == 0 and row["t_ms"] >= pf)
+    check(shed is not None and shed - pf <= 5.0,
+          "the sensor rail is shed within 5 ms of PWR_FAIL",
+          "shed at +%.1f ms -- this is what buys the 154 ms window instead of 75"
+          % ((shed - pf) if shed else float("nan")))
+
+    # The shutdown path only runs during an ignition cut, so warnings raised
+    # there -- dropping the card supply while the bus is still mounted, for one
+    # -- never appeared in the steady-state run checked above.
+    iw = [f for f in ri.faults if f.startswith("WARN")]
+    check(not iw, "the shutdown path raises no warnings either",
+          "; ".join(w.split(None, 3)[2] for w in iw) if iw else "")
+    return r
 
 
 def study_worst_case(exes):
@@ -801,6 +906,9 @@ def main():
     ap.add_argument("--only", help="run a single study by number or name")
     ap.add_argument("--sketch", default="both", choices=("r53", "autosport", "both"))
     ap.add_argument("--no-plots", action="store_true")
+    ap.add_argument("--sketch-path",
+                    help="build the autosport studies from this file instead "
+                         "of the real one (used by the mutation harness)")
     args = ap.parse_args()
 
     print(__doc__.strip().split("\n\n")[0])
@@ -811,9 +919,12 @@ def main():
     if args.sketch in ("r53", "both"):
         exes["r53"] = build(R53_SKETCH, "r53")
         print("  r53        %s" % R53_SKETCH)
+    if args.sketch_path:
+        globals()["AUTOSPORT_SKETCH"] = args.sketch_path
     have_port = os.path.exists(AUTOSPORT_SKETCH)
     if args.sketch in ("autosport", "both") and have_port:
-        exes["autosport"] = build(AUTOSPORT_SKETCH, "autosport")
+        exes["autosport"] = build(args.sketch_path or AUTOSPORT_SKETCH,
+                                  "mutant" if args.sketch_path else "autosport")
         print("  autosport  %s" % AUTOSPORT_SKETCH)
 
     want = args.only
@@ -873,6 +984,8 @@ def main():
             study_flush_margin(exes)
         if run_it(12, "worstcase"):
             study_worst_case(exes)
+        if run_it(13, "detail"):
+            study_ported_detail(exes)
         if not args.no_plots:
             plot({"rpm": r, "ignition": r2}, os.path.join(PROJ, "sim", "firmware.png"))
 

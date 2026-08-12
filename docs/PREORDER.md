@@ -13,7 +13,8 @@ python gen/validate.py            # schematic vs netlist.txt, plus ERC
 python gen/audit_docs.py          # docs vs design: designators and numbers
 python gen/audit_polarity.py      # every polarised part, plus a fab checklist
 python gen/simulate.py            # 12 circuit studies (needs ngspice)
-python gen/simulate_firmware.py   # 35 firmware-in-the-loop checks
+python gen/simulate_firmware.py   # 49 firmware-in-the-loop checks
+python gen/mutate_firmware.py     # proves those checks would fail if the firmware broke
 python gen/audit_paste.py         # stencil apertures: IPC-7525 + thermal-pad coverage
 python gen/audit_mechanical.py    # vibration screen for the tall capacitors
 "…/KiCad/9.0/bin/python.exe" gen/audit_pcb.py
@@ -35,6 +36,7 @@ All of the above pass as of 2026-08-12.
 | Polarity of every diode, electrolytic, IC | `audit_polarity.py` | a part designed in backwards |
 | Circuit behaviour, 12 studies | `simulate.py` | ISO 7637-2 survival, ripple, ride-through, inrush, crank, tolerances |
 | Firmware against a model of this board | `simulate_firmware.py` | wrong GPIO, wrong divider constant, an unspent power-fail window |
+| Whether those firmware checks are worth anything | `mutate_firmware.py` | a test suite that passes because it asserts nothing — 16 of 16 injected defects caught |
 | Stencil apertures | `audit_paste.py` | starved fine-pitch joints; a thermal pad given so much paste the part floats |
 | Vibration on the tall parts | `audit_mechanical.py` | solder-joint fatigue on the 22 mm capacitor cans |
 | Copper: current capacity, decoupling distance, thermals, overlapping drills | `audit_pcb.py` | a 1 A rail on 0.2 mm track; two vias drilled on one point |

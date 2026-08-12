@@ -581,6 +581,7 @@ thin-film divider resistors are commodity and auto-match on value + package.
 | `firmware/vendor/` | Verbatim copy of the R53 sketch — the control build, do not edit |
 | `gen/simulate_firmware.py` | Firmware-in-the-loop studies: runs the sketch and feeds it inputs |
 | `fwsim/` | The host shims and board model those studies run on |
+| `gen/mutate_firmware.py` | Mutation test: breaks the firmware 16 ways and checks the suite notices |
 | `sim/fw/` | Per-run scenario, trace, serial log and findings (generated) |
 
 ### KiCad version
@@ -902,7 +903,7 @@ something different here:
 Plus the power-fail contract above, which that board has no signal for.
 
 **The port.** `firmware/esp32_shiftlight_wideband/` is the same firmware with
-those fixed, plus SD logging and the `PWR_FAIL` path. It passes all 31 checks.
+those fixed, plus SD logging and the `PWR_FAIL` path. It passes all 49 checks.
 Study 11 is what sized the shutdown: it swept card latency and caught a
 redundant `flush()` before `close()` in the shutdown path — two full card
 writes instead of one — which had cut the tolerable card latency roughly in
