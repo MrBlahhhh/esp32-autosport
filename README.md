@@ -1,5 +1,29 @@
 # ESP32-S3 CAN + microSD Automotive Logger — Rev A
 
+## TL;DR
+
+A data logger you wire straight into a race car: 12 V and CAN come in on one
+4-pin plug, sensor readings and CAN traffic get written to a microSD card.
+
+- **You cannot kill it with the wiring.** Battery backwards? Blocks it,
+  forever, no blown fuse. Alternator load dump, jump start, ignition spikes?
+  Clamped. A sensor wire shorted to 12 V? That channel's fuse trips, the
+  board keeps logging.
+- **Ignition-off doesn't corrupt the card.** The board sees the power cut
+  ~100 ms before it actually dies and uses that time (banked in two big
+  capacitors) to finish the write and close the file.
+- **4 sensor inputs, jumper-set for 0–3.3 V / 0–5 V / 0–16 V**, readable
+  fast-and-rough on the ESP32's own ADC or slow-and-precise on a 16-bit
+  ADS1115. Plus battery voltage monitoring, USB-C, a WS2812 shift-light
+  header, and spare I/O.
+- **The Python in `gen/` is the real source.** It generates, places, routes,
+  audits, and circuit-simulates the whole board; the KiCad files are build
+  outputs. `python gen/build_board.py` rebuilds the PCB from nothing.
+- **State: routed clean, simulated, never manufactured.** Order a small
+  prototype run first.
+
+---
+
 A single-CAN, single-microSD ESP32-S3 board with a motorsport-grade front end:
 reverse-battery protection that survives being hooked up backwards indefinitely,
 load-dump clamping, and four analog sensor inputs whose dividers are selected by
@@ -12,13 +36,14 @@ termination jumper — but trades the second CAN channel for an onboard microSD
 socket and conditioned analog inputs.
 
 **Status: Rev B, fully routed.** Schematic is ERC-clean on KiCad 9.0. The PCB
-is **84 x 84 mm**, 4-layer, **fully placed and routed with zero DRC errors and
-nothing unconnected** — 1447 tracks, 258 vias, 179 footprints, 106 nets. Rev B
+is **84 x 100 mm**, 4-layer, **fully placed and routed with zero DRC errors and
+nothing unconnected** — 1431 tracks, 256 vias, 194 footprints, 111 nets. Rev B
 carries the fixes from an external datasheet review (§7): the LM74700 enable
 divider, the ANODE capacitor, two TVS standoff corrections, transient clamps
 on the analog harness inputs, and a dozen smaller items. `fab/` holds the
 Gerbers, drill, BOM and pick-and-place in JLCPCB's format, BOM and CPL verified
-to list the same 145 designators. See §9 for how the board is built and §10 for
+to list the same 160 designators. See §9 for how the board is built, §10 for
+what simulation and the physical audit say about it, and §11 for
 the ordering steps. **Nothing has ever been fabricated — the first order should
 be a small prototype run.**
 
@@ -29,24 +54,23 @@ be a small prototype run.**
 | | |
 |---|---|
 | MCU | ESP32-S3-WROOM-1-N16R8 (16 MB flash, 8 MB octal PSRAM) |
-| Supply input | 6–36 V continuous, reverse-protected to −65 V, clamped at 53.3 V |
+| Supply input | 6–36 V continuous, reverse-protected to −65 V, transients clamped at 64.5 V, ~108 ms power-cut ride-through |
 | CAN | 1× CAN 2.0B, TJA1051T/3, ESP32-S3 TWAI controller, jumper-selectable split termination |
 | Storage | microSD, 4-bit SDMMC, switchable card supply |
 | Analog in | 4 channels, solder-jumper divider (0–3.3 V / 0–5 V / 0–16 V) + optional pull-up bias, shared by the ESP32 ADC and a 16-bit ADS1115 |
 | Extras | Battery voltage monitor, USB-C (native USB), I²C/Qwiic, UART0, SPI breakout, WS2812 5 V DIN header, 6-pin spare-IO header |
 | Rails | +5 V @ 1 A, +3V3 @ 1 A, +5 V sensor excitation (separately fused) |
-| Parts | 168 component instances, 87 distinct BOM lines, all surface-mount except 8 through-hole connectors |
+| Parts | 185 component instances, 95 distinct BOM lines, all surface-mount except 8 through-hole connectors |
 
 ---
 
 ## 2. Power chain
 
 ```
-J1.1 ──[F1 2A]──[FB1 ferrite]──┬── LM74700-Q1 + Q1 (ideal diode) ──┬── +VBAT
-                               │                                    ├── D1 SMCJ33A clamp
-                               │                                    ├── C2 100µF bulk
-                               │                                    ├── U2 LM5164 ─→ +5V ─[PF1]─→ +5VS (sensors)
-                               │                                    └── U3 LM5164 ─→ +3V3
+J1.1 ──[F1 2A]──┬──[FB1 ferrite]── LM74700-Q1 + Q1 (ideal diode) ──┬── +VBAT
+                │                                                  ├── C2 100µF bulk
+                └── D1 SMCJ40CA clamp                              ├── U2 LM5164 ─→ +5V ─[PF1]─→ +5VS
+                    (ahead of the FET)                             └── U3 LM5164 ─→ +3V3
 ```
 
 ### Reverse-battery protection
@@ -61,31 +85,47 @@ up backwards all day.
 The forward drop is the FET's I·R (6.8 mΩ × 0.5 A ≈ 3 mV) rather than a diode's
 0.4 V, so nothing is wasted in normal running either.
 
-**Order matters here.** `D1`, the load-dump TVS, sits *after* the blocking FET,
-not before it. A unidirectional TVS ahead of the FET would forward-conduct on
-reverse polarity and blow `F1` — protection by sacrifice. Behind the FET, it
-sees nothing during a reverse connection.
+**Order matters here.** `D1`, the transient clamp, sits *ahead* of the blocking
+FET. Clamping downstream of it leaves `Q1` and the LM74700 exposed to whatever
+arrives on the harness: on a negative transient `Q1` turns off and stands the
+whole pulse across its drain-source, and pulses 1 (−100 V) and 3a (−150 V) both
+exceed its 100 V rating. In front of the FET the clamp catches those first —
+simulation puts `Q1` at 55 V during pulse 1, against 100 V (§10).
+
+That placement is only safe because `D1` is **bidirectional**. A unidirectional
+part in this position would forward-conduct on a sustained reverse connection
+and blow `F1`, which is exactly the outcome the ideal diode exists to avoid. At
+40 V standoff either way, a −14 V reverse battery is still `Q1`'s job to block
+and only real transients are clamped.
 
 `R1`/`R2` set the LM74700 UVLO so the board enables at roughly 5.9 V and drops
 out cleanly during cranking rather than browning out in an undefined state.
 
 ### Transient rating and its assumption
 
-`D1` is an SMCJ33A: 33 V standoff, 53.3 V clamping at 1500 W (10/1000 µs).
+`D1` is an SMCJ40CA: 40 V standoff either polarity, 64.5 V clamping at 1500 W
+(10/1000 µs). 40 V rather than 33 V so the part stands off the declared 36 V
+top of the input window instead of sitting in conduction there.
 
 That covers **ISO 7637-2 pulse 5b with centralised load-dump suppression**
 (test level ~35 V), which is what any alternator with an internal avalanche
-clamp produces — i.e. everything built in the last several decades. It also
-covers pulses 1, 2a, 3a and 3b, and a 24 V jump-start sits below the standoff
-voltage so it does not conduct.
+clamp produces — i.e. everything built in the last several decades. Simulation
+(§10) shows the harness reaching 31 V in that case with the TVS never
+conducting at all. Pulses 1, 2a, 3a and 3b are likewise covered: the worst is
+pulse 1, where the clamp takes 0.07 J against roughly 2 J of capability at that
+pulse width. A 24 V jump-start sits below the standoff voltage so it does not
+conduct.
 
-It does **not** cover unsuppressed load dump (>100 V), which would need a
-higher-energy clamp or a series pre-regulator. Say so if the target vehicle has
-an external-regulator alternator.
+It does **not** cover unsuppressed load dump. At the pulse 5b level IV of 87 V
+the clamp is asked to absorb 219 J against about 6.7 J of capability and is
+destroyed (§10). That needs a higher-energy clamp or a series pre-regulator —
+**say so if the target vehicle has an external-regulator alternator.**
 
-Both bucks are LM5164s rated to **100 V**, so at the 53.3 V clamp level
-there is nearly 2× headroom on the switcher inputs — the clamp fires long
-before anything downstream is stressed.
+Both bucks are LM5164s rated to **100 V**, so at the 64.5 V clamp level there
+is still headroom on the switcher inputs; the clamp fires before anything
+downstream is stressed. The tighter limit is the LM74700's own 65 V, which the
+clamp level sits directly on top of — another reason the unsuppressed case is
+out of scope rather than marginal.
 
 ### Why two bucks instead of a buck plus an LDO
 
@@ -102,11 +142,42 @@ inductor versus 12 V→5 V→3.3 V cascading, and buys two things:
 Both parts are the same LM5164, so it is one line on the BOM in quantity 20
 rather than two different regulators.
 
+### Power-fail detection and ride-through
+
+The ignition cuts this board's power with a log file open on the SD card,
+every single drive. The chain that makes that survivable:
+
+1. **Detect** — a TLV431 watches `VBAT_F` *ahead* of Q1 through a 100k/12.7k
+   divider and asserts `PWR_FAIL` (GPIO15, rising edge) when the harness
+   drops below **11.0 V**. Sensing ahead of the ideal diode is the point:
+   when the ignition opens, the harness collapses within microseconds while
+   `+VBAT` coasts, so the warning arrives before any stored energy has been
+   spent. A 1 M feedback resistor adds ~0.3 V of hysteresis so cranking sag
+   cannot chatter the interrupt.
+2. **Coast** — `+VBAT` holds 540 µF (100 µF + 2 × 220 µF/100 V). Energy is
+   ½CV², so the bank lives on the input rail where a volt is worth most.
+3. **Shed** — `SENS_EN` (GPIO16) drives a 2N7002 + AO3401 high-side switch on
+   the sensor rail. Sensors are external loads firmware cannot otherwise
+   turn off, and at four × 20 mA they double the drain. The switch is off at
+   reset — the rail comes up only when firmware asks.
+
+Simulated end to end (§10, `sim/ridethru.png`): detection in under 1 ms, and
+from `PWR_FAIL` to the converters dropping out is **~108 ms with the sensor
+rail shed, ~53 ms without**. An SD flush-and-close is tens of milliseconds
+on a healthy card, so the shed path covers even a card that stalls.
+
+**Firmware contract:** on `PWR_FAIL` rising — drop `SENS_EN`, stop sampling,
+flush and close the file, then idle. Do not start a new write while
+`PWR_FAIL` is high. The window is guaranteed by hardware; spending it is
+firmware's job.
+
 ### 5 V sensor excitation
 
-`+5VS` is the +5 V rail behind `PF1` (200 mA hold / 400 mA trip polyfuse), a
-ferrite, and `D3` (SMAJ5.0A). A sensor wire shorted to chassis or to battery
-trips the polyfuse and clamps the transient without taking the board down.
+`+5VS` is the +5 V rail behind the `SENS_EN` load switch, `PF1` (200 mA hold
+/ 400 mA trip polyfuse), a ferrite, and `D3` (SMAJ6.0A). A sensor wire
+shorted to chassis or to battery trips the polyfuse and clamps the transient
+without taking the board down — and a tripped rail can now also be cycled
+from firmware instead of waiting for the polyfuse to cool.
 
 Note this is a *fused tap off the 5 V rail*, not a separately regulated
 reference. For ratiometric sensors where absolute accuracy matters, the ADC
@@ -252,7 +323,8 @@ MCU will back-feed the card through its I/O pins while its supply is off.
 | 27 | IO0 | `MCU_BOOT` | BOOT button |
 | 3 | EN | `MCU_EN` | RESET button |
 | 15, 16, 26 | IO3, IO46, IO45 | — | Spare-IO header `J7`, each with a 10 k pull-down |
-| 8, 9 | IO15, IO16 | — | Spare-IO header `J7` pins 4–5 (were status LEDs) |
+| 8 | IO15 | `PWR_FAIL` | Power-fail interrupt (high = harness below 11 V); also J7 pin 4 as a probe point |
+| 9 | IO16 | `SENS_EN` | Sensor-rail (+5VS) enable, active high, off at reset; also J7 pin 5 |
 | 28, 29, 30 | IO35, IO36, IO37 | — | **Unusable** — octal PSRAM |
 
 `IO3`, `IO45` and `IO46` are strapping pins and are broken out with no pull
@@ -279,14 +351,15 @@ drawing 4214849/B):
 
 1. ~~RON placeholders~~ — computed from Eq. 12: **31.6 kΩ → 396 kHz** on the
    5 V rail, **20.5 kΩ → 402 kHz** on the 3.3 V rail. Minimum on-time at the
-   53.3 V clamp is 237 ns / 154 ns, both far above the 50 ns floor.
+   64.5 V clamp is 196 ns / 128 ns, both far above the 50 ns floor.
 2. ~~Footprint~~ — the original `EP2.41x3.3mm` exposed pad was *smaller* than
    the DDA0008B pad itself (max 2.71 × 3.4 mm). Now on
    `EP2.95x4.9mm_Mask2.71x3.4mm_ThermalVias`, which matches TI's example land
    pattern exactly (2.95 × 4.9 copper, 2.71 × 3.4 mask-defined opening).
 3. ~~Load-dump assumption~~ — confirmed: the target vehicle's alternator never
-   exceeds 20 V, so the SMCJ33A's 33 V standoff has comfortable margin and the
-   centralised-suppression assumption in §2 holds.
+   exceeds 20 V, so the SMCJ40CA's 40 V standoff has comfortable margin and the
+   centralised-suppression assumption in §2 holds. Simulation later put a
+   number on what happens if it does not: see §10.
 4. ~~Clamp injection~~ — quantified: one analog input shorted to 20 V battery
    back-feeds ≈1.6 mA through its BAT54S into +3V3. With the MCU running
    (≥ 20 mA) the rail cannot lift, but in deep sleep the always-on load is only
@@ -562,7 +635,84 @@ together on copper for a reversible cable, and at 0.5 mm pitch that needs a
 via channel between the pad row and the edge keepout. The case opening sets
 plug access anyway.
 
-## 10. Handoff — remaining work
+## 10. Simulation and physical audit
+
+Two scripts check what ERC and DRC structurally cannot. ERC asks whether the
+netlist is self-consistent and DRC asks whether the copper is manufacturable;
+neither asks whether the circuit works, or whether the board survives a car.
+
+```
+python gen/simulate.py                          # ngspice: the circuits
+"…/KiCad/9.0/bin/python.exe" gen/audit_pcb.py   # pcbnew: the layout's physics
+"…/KiCad/9.0/bin/python.exe" gen/overstress.py  # closed-form worst case
+```
+
+`simulate.py` needs ngspice, numpy and matplotlib and runs on any Python 3. It
+writes its decks, data and plots to `sim/`, so every number below can be
+re-derived rather than taken on trust.
+
+**What it confirms.** The divider maths in §3 is right to three digits: 5.0 V
+in gives 2.859 V at the ADC on the 0–5 V setting and 16.0 V gives 2.670 V on
+the 0–16 V setting, against the 2.88 and 2.67 the schematic notes predict.
+Both converters run well inside their inductors — 0.27 A of ripple on a 2.13 A
+peak against a 3.0 A saturation rating for +5 V, 0.35 A on 1.18 A against
+3.4 A for +3V3 — with 26 mV and 44 mV of output ripple at 13.5 V in, computed
+against the output MLCCs' biased capacitance rather than their printed value.
+ISO 7637-2 pulses 2a, 3a and 3b never reach the clamp at all: the 100 µF bulk
+and the ferrite swallow them and the TVS absorbs a measured 0 J.
+
+**What it flags.**
+
+1. **Pulse 1 still browns the board out, now for ~5.6 ms.** A -100 V, 2 ms
+   transient turns Q1 off, and the board runs on the 540 uF bank at full
+   load until the harness recovers. The ride-through caps shrank the outage
+   from 8.2 ms but cannot absorb it: the pulse actively holds the harness
+   at -47 V for 2 ms, and the bank spends most of its charge riding that
+   out. Nothing is damaged -- Q1 stands off 59 V against its 100 V rating --
+   and the power-fail detector fires on the way down, so firmware sees it
+   as an ordinary power cut and closes the file. A reset mid-drive on a
+   full ISO pulse 1 is the accepted outcome. **This is a decision, not a
+   defect.**
+
+2. **An unsuppressed load dump destroys the front end.** At the pulse 5b
+   level IV of 87 V the SMCJ40CA absorbs 219 J against roughly 6.7 J of
+   capability at that pulse width. The suppressed 35 V case is a non-event:
+   31 V at the harness, the TVS never conducts. So D1's note claiming it
+   "absorbs ISO 7637-2 pulse 5b load dump" holds only for a vehicle with a
+   centrally suppressed alternator — every modern one, but an assumption the
+   board depends on rather than a property it has.
+
+3. **The anti-alias corner moves with the range jumper**: 261 Hz on the 0–5 V
+   setting, 891 Hz on 0–16 V, 1.65 kHz bypassed. The 100 nF sees a different
+   source impedance in each configuration, so the filter is whatever the
+   divider leaves it. Two of the three sit above the 430 Hz Nyquist of the
+   ADS1115 at its fastest rate.
+
+4. **A 36 V input with BYPASS closed backfeeds +3V3.** Each channel pushes
+   32 mA through its BAT54S into the rail, 129 mA across four. Harmless while
+   the ESP32 is drawing its share; a rail-pumping hazard on a sleeping or
+   unpowered board with a live loom.
+
+**What it does not cover.** The LM5164's control loop. It is a constant-on-time
+part with an encrypted TI model, so the buck deck drives the power stage at an
+ideal duty cycle: it answers what the passives have to survive, not whether the
+loop is stable or how it recovers from a load step. That needs TI's PSpice
+model.
+
+`audit_pcb.py` reads the routed board and checks rail current capacity against
+IPC-2221, copper inside the antenna keepout, how far each bypass capacitor sits
+from the pin it bypasses, dissipation against the copper and thermal vias under
+each converter, and drilled holes that overlap. That last check exists because
+DRC only compares holes on *different* nets: two vias of the same net can sit
+on one point and pass, and the fab then drills it twice.
+
+The decoupling check is what found the two placement defects fixed here — the
++3V3 converter had no input capacitor of its own and was reaching 12.6 mm
+across to the +5 V island's pair, and the CAN transceiver's +5 V bypass sat
+8.8 mm from its supply pin. Both now sit at their pins, pinned by `PIN_FIXED`
+in `gen/generate_pcb.py` so the zone packer cannot drift them again.
+
+## 11. Handoff — remaining work
 
 **Schematic is done.** Do not redesign power/CAN/analog unless a datasheet
 conflict appears. Edit `gen/generate_schematic.py` only; then

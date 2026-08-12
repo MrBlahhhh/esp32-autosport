@@ -401,6 +401,7 @@ HDR4 = "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"
 HDR6 = "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical"
 HDR8 = "Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical"
 SOT235 = "Package_TO_SOT_SMD:SOT-23-5"
+SOT233 = "Package_TO_SOT_SMD:SOT-23"   # TLV431 is a 3-pin SOT-23
 SJ2 = "Jumper:SolderJumper-2_P1.3mm_Open_Pad1.0x1.5mm"
 SJ2B = "Jumper:SolderJumper-2_P1.3mm_Bridged_Pad1.0x1.5mm"
 SJ3 = "Jumper:SolderJumper-3_P1.3mm_Open_Pad1.0x1.5mm"
@@ -539,6 +540,90 @@ C(pw, "100uF 100V", "+VBAT", "GND", fp="Capacitor_SMD:CP_Elec_10x10.5",
 C(pw, "10uF 100V", "+VBAT", "GND", fp=C1206, note="Switcher input bypass")
 C(pw, "100nF 100V", "+VBAT", "GND", note="HF bypass")
 
+# Ride-through bank. The card in this thing is written continuously and the
+# ignition is switched, so every drive ends in an unannounced power cut. With
+# only the 100uF above, +VBAT falls through the converters' UVLO about 12 ms
+# after the harness opens -- less than one SD block write on a slow card, so
+# the file is left however the card happened to leave it.
+#
+# Energy is 0.5*C*(V^2 - Vmin^2), so it belongs here on +VBAT rather than on
+# a 3.3V rail: the same capacitance is worth fifteen times as much at 12 V as
+# it is at 3.3 V. From 12 V (the low end of a healthy battery) down to the
+# 7 V the converters stop regulating at, 540 uF holds 25.6 mJ.
+#
+# 100 V rated, not 63 V: D1 clamps at 64.5 V and the declared input window
+# already goes to 36 V.
+for _ in range(2):
+    C(pw, "220uF 100V", "+VBAT", "GND",
+      fp="Capacitor_SMD:CP_Elec_16x17.5", polarized=True,
+      note="Power-fail ride-through. With the sensor rail shed and the LEDs "
+           "off the board draws about 0.35 W here, so the bank holds the "
+           "rails up for roughly 70 ms -- enough to finish the block in "
+           "flight and close the file. Any 220uF >=80V on a 16x17.5 land "
+           "works; match in the JLC catalogue at order. Pin 1 is +")
+
+# ---- power-fail detect ---------------------------------------------------
+# Sensed on VBAT_F, ahead of Q1, which is the whole point: when the ignition
+# opens, the harness side collapses at once while +VBAT coasts on the bank
+# above. Q1 is already the isolating diode between them, so this costs no
+# extra parts and gives the earliest possible warning. Sensing +VBAT instead
+# would only notice once the ride-through had already started being spent.
+#
+# A bare divider into a GPIO will not do. The ESP32's input is only
+# guaranteed high above 0.75*VDD and low below 0.25*VDD, so the real trip
+# point could land anywhere from 11 V down to 3.7 V of harness -- and at
+# 3.7 V the bank is long empty. The shunt reference makes it +/-1%.
+R(pw, "100k 1%", "VBAT_F", "PFD_SENSE", note="Power-fail divider, upper leg")
+R(pw, "12.7k 1%", "PFD_SENSE", "GND",
+  note="Lower leg: trips at 1.24V * 112.7/12.7 = 11.00V on the harness, "
+       "below anything a healthy battery does and far above the converters' "
+       "dropout, so there is a whole ride-through between detect and death")
+part(pw, "U", "Reference_Voltage:TL431DBZ", "TLV431A", SOT233,
+     {"1": "PWR_FAIL", "2": "PFD_SENSE", "3": "GND"},
+     "TLV431ASN1T1G",
+     "Power-fail comparator. Below the trip point it stops conducting and "
+     "R_pu takes PWR_FAIL high, so the interrupt is a rising edge and an "
+     "absent or dead part reads as 'failing' rather than as 'fine'. "
+     "PINOUT: this uses KiCad's TL431DBZ numbering (1 K, 2 REF, 3 A) on a "
+     "plain SOT-23. Shunt references are NOT consistent between vendors in "
+     "this package -- CONFIRM against the datasheet for the exact part "
+     "ordered. If REF and A are swapped the part simply never conducts and "
+     "PWR_FAIL sits permanently asserted: loud, harmless, and obvious on the "
+     "bench, but it will not be caught by ERC or DRC")
+R(pw, "10k", "+3V3", "PWR_FAIL",
+  note="Cathode pull-up. 10k gives the part 330uA, over the TLV431's 100uA "
+       "minimum cathode current. A 2.5V TL431 would need 1mA and so a 2.2k "
+       "here, and the divider below would have to change with it")
+R(pw, "1M", "PWR_FAIL", "PFD_SENSE",
+  note="Hysteresis, about 0.3V at the harness. Without it a battery sagging "
+       "across the threshold on crank would chatter the interrupt")
+C(pw, "1nF 50V", "PFD_SENSE", "GND",
+  note="Just enough to keep switching noise off the reference. Larger would "
+       "delay the very detection this exists to make early")
+
+# ---- switched sensor excitation -----------------------------------------
+# The ride-through only works if the load goes away with the power. LEDs and
+# the SD card are firmware's to shed, but sensors on +5VS are external and
+# draw whatever they draw -- four at 20 mA is 400 mW, which more than doubles
+# the drain and would halve the numbers above. This switch is what makes the
+# shed possible.
+#
+# Off by default: the gate is pulled to +5V through R_g, so the rail comes up
+# only when firmware asserts SENS_EN, and it drops the instant the MCU stops
+# driving. That is the correct failure direction for a rail that feeds a loom.
+part(pw, "Q", "Device:Q_PMOS_GSD", "P-ch 30V 3A", SOT23,
+     {"1": "SENS_G", "2": "+5V", "3": "VSENS_SW"}, "Alpha & Omega AO3401A",
+     "Sensor-rail load switch. Source to +5V, so the body diode points into "
+     "the rail and the switch blocks with the gate high", lcsc="C15127")
+R(pw, "100k", "+5V", "SENS_G", note="Holds the switch off when nothing drives it")
+part(pw, "Q", "Device:Q_NMOS_GSD", "N-ch 60V 200mA", SOT23,
+     {"1": "SENS_EN_G", "2": "GND", "3": "SENS_G"}, "onsemi 2N7002",
+     "Level shifter: the P-FET's gate has to be pulled to GND from 5V, and "
+     "a 3.3V GPIO cannot do that directly", lcsc="C8545")
+R(pw, "10k", "SENS_EN", "SENS_EN_G", note="GPIO series/gate resistor")
+R(pw, "100k", "SENS_EN_G", "GND",
+  note="Holds the level shifter off while the MCU is in reset")
+
 # +5V rail
 part(pw, "U", "Regulator_Switching:LM5164DDA", "LM5164 (5V)", SO8EP,
      {"1": "GND", "2": "+VBAT", "3": "EN_5V", "4": "RON_5V", "5": "FB_5V",
@@ -576,6 +661,15 @@ part(pw, "U", "Regulator_Switching:LM5164DDA", "LM5164 (3V3)", SO8EP,
       "6": "PG_3V3", "7": "BST_3V3", "8": "SW_3V3", "9": "GND"},
      "LM5164DDAR", "Second buck straight off the battery: a shorted 5V "
      "sensor harness cannot brown out the MCU", lcsc="C477928")
+# This converter's own input capacitors. It had none: it shared the 5 V
+# island's pair, 12.6 mm away across the board, which puts that whole
+# distance in the switching loop. The LM5164 chops the full battery
+# voltage in nanoseconds, and the loop inductance turns into VIN ringing
+# and radiated noise. Two more parts is a cheap fix for it.
+C(pw, "100nF 100V", "+VBAT", "GND",
+  note="3V3 buck HF input bypass -- must sit at U3's VIN pin")
+C(pw, "10uF 100V", "+VBAT", "GND", fp=C1206,
+  note="3V3 buck bulk input, at the VIN pin")
 R(pw, "100k", "+VBAT", "EN_3V3")
 C(pw, "10nF 100V", "EN_3V3", "GND", note="EN noise immunity, as for the 5V rail")
 R(pw, "20.5k", "RON_3V3", "GND",
@@ -603,8 +697,10 @@ part(pw, "D", "Device:D_Zener", "3.6V 300mW", "Diode_SMD:D_SOD-323",
 
 # 5V sensor excitation, fused separately from the board 5V
 part(pw, "PF", "Device:Polyfuse", "0.2A hold / 0.4A trip", "Resistor_SMD:R_1206_3216Metric",
-     {"1": "+5V", "2": "VSENS_F"}, "Bourns MF-MSMF020",
-     "Resettable: a shorted sensor wire trips this, not the board")
+     {"1": "VSENS_SW", "2": "VSENS_F"}, "Bourns MF-MSMF020",
+     "Resettable: a shorted sensor wire trips this, not the board. Now behind "
+     "the load switch, so a short is also something firmware can clear by "
+     "dropping SENS_EN, rather than waiting for the fuse to cool")
 part(pw, "FB", "Device:L", "600R @ 100MHz 2A", "Inductor_SMD:L_0805_2012Metric",
      {"1": "VSENS_F", "2": "+5VS"}, "Wurth 742792022")
 C(pw, "10uF 16V", "+5VS", "GND", fp=C1206)
@@ -635,7 +731,7 @@ part(mc, "U", "RF_Module:ESP32-S3-WROOM-1", "ESP32-S3-WROOM-1-N16R8",
      {
          "1": "GND", "2": "+3V3", "3": "MCU_EN",
          "4": "AIN3", "5": "AIN4", "6": "VBAT_SNS", "7": "SD_PWR_EN",
-         "8": "IO15", "9": "IO16", "10": "CAN_TX", "11": "CAN_RX",
+         "8": "PWR_FAIL", "9": "SENS_EN", "10": "CAN_TX", "11": "CAN_RX",
          "12": "SD_CD", "13": "USB_DM", "14": "USB_DP",
          "15": "IO3", "16": "IO46",
          "17": "SD_D3", "18": "SD_D2", "19": "SD_D1", "20": "SD_D0",
@@ -741,11 +837,14 @@ R(mc, "10k", "IO45", "GND", note="Strapping pin: VDD_SPI = 3.3V")
 R(mc, "10k", "IO46", "GND", note="Strapping pin: normal boot mode")
 part(mc, "J", "Connector_Generic:Conn_01x06", "Spare IO", HDR6,
      {"1": "IO3", "2": "IO45", "3": "IO46",
-      "4": "IO15", "5": "IO16", "6": "GND"},
+      "4": "PWR_FAIL", "5": "SENS_EN", "6": "GND"},
      note="IO3/IO45/IO46 are strapping pins, each with a 10k pull-down -- "
-          "anything attached must not fight them at boot. IO15/IO16 are "
-          "ordinary GPIOs, free since the status LEDs came off. The ground "
-          "pin is here so a probe or a ribbon has a return")
+          "anything attached must not fight them at boot. Pins 4 and 5 are "
+          "no longer spare: IO15 is the power-fail interrupt and IO16 is the "
+          "sensor-rail enable. They stay on the header as probe points, so "
+          "the ride-through can be watched on a scope without unsoldering "
+          "anything, but nothing else may drive them. The ground pin is here "
+          "so a probe or a ribbon has a return")
 part(mc, "J", "Connector_Generic:Conn_01x04", "Rail break-out", HDR4,
      {"1": "+5V", "2": "+3V3", "3": "GND", "4": "GND"})
 
@@ -906,7 +1005,7 @@ def assign_refs():
 # Placement
 # --------------------------------------------------------------------------
 
-PAGE_W, PAGE_H = 420.0, 297.0
+PAGE_W, PAGE_H = 594.0, 297.0   # A2 width, A3 height: sheets grow sideways
 MARGIN_X, MARGIN_TOP, MARGIN_BOT = 12.0, 18.0, 22.0
 STUB = 5.08
 LABEL_ALLOWANCE = 15.0   # rails are power symbols and pairs are wired now
@@ -919,7 +1018,12 @@ ROW_PAD, ROW_MIN, COL_GAP, ROW_SLACK_MAX = 10.16, 17.78, 12.7, 15.24
 # drawing actually fits on. A CAN transceiver and its bus is a 130 x 70 mm
 # drawing; left on A3 it is a stamp in the corner of an empty page, and
 # "fit to window" then renders it too small to read.
-PAPERS = [("A5", 210.0, 148.0), ("A4", 297.0, 210.0), ("A3", 420.0, 297.0)]
+PAPERS = [("A5", 210.0, 148.0), ("A4", 297.0, 210.0), ("A3", 420.0, 297.0),
+          ("A2", 594.0, 420.0)]
+# A2 is here because the Power sheet outgrew A3 when the ride-through bank,
+# the power-fail detector and the sensor-rail switch went on it. The
+# alternative was splitting Power in two, which would put the front end and
+# the rails it feeds on different pages -- worse to read than a wide page.
 GRID = 1.27
 
 
@@ -1269,9 +1373,16 @@ def emit_symbol(libs, sh, p, sheet_uuid):
     text_angle = 0 if p["theta"] == 180 else (360 - p["theta"]) % 360
     just = " (justify left)" if ref_x != p["x"] else ""
     for name, value, px, py, hide in props:
+        # No control characters in a property string, ever. A literal
+        # newline inside one is accepted by KiCad's loader but silently
+        # breaks its connectivity pass: every symbol after it in the file
+        # drops out of the netlist and ERC reports hundreds of dangling
+        # wires with no hint of the cause. One "\n" in a part note cost an
+        # evening of bisecting to find.
+        clean = " ".join(value.replace('"', "'").split())
         lines.append(
             '    (property "%s" "%s" (at %s %s %d)\n      %s\n    )'
-            % (name, value.replace('"', "'"), mm(px), mm(py), text_angle,
+            % (name, clean, mm(px), mm(py), text_angle,
                "(effects (font (size 1.27 1.27))%s %s)"
                % (just, "hide" if hide else ""))
         )
@@ -1671,7 +1782,7 @@ PRO_TEMPLATE = """{
       {"bus_width": 12, "clearance": 0.2, "diff_pair_gap": 0.25, "diff_pair_via_gap": 0.25,
        "diff_pair_width": 0.2, "line_style": 0, "microvia_diameter": 0.3, "microvia_drill": 0.1,
        "name": "Power", "pcb_color": "rgba(0, 0, 0, 0.000)", "schematic_color": "rgba(0, 0, 0, 0.000)",
-       "track_width": 0.5, "via_diameter": 0.8, "via_drill": 0.4, "wire_width": 6},
+       "track_width": 0.55, "via_diameter": 0.8, "via_drill": 0.4, "wire_width": 6},
       {"bus_width": 12, "clearance": 0.2, "diff_pair_gap": 0.2, "diff_pair_via_gap": 0.25,
        "diff_pair_width": 0.25, "line_style": 0, "microvia_diameter": 0.3, "microvia_drill": 0.1,
        "name": "CAN", "pcb_color": "rgba(0, 0, 0, 0.000)", "schematic_color": "rgba(0, 0, 0, 0.000)",
@@ -1698,6 +1809,7 @@ PRO_TEMPLATE = """{
       {"netclass": "Power", "pattern": "SD_VDD"},
       {"netclass": "Power", "pattern": "LED_5V"},
       {"netclass": "Power", "pattern": "VSENS_F"},
+      {"netclass": "Power", "pattern": "VSENS_SW"},
       {"netclass": "Fine", "pattern": "USB_CC1"},
       {"netclass": "Fine", "pattern": "USB_CC2"},
       {"netclass": "CAN", "pattern": "CAN_H"},

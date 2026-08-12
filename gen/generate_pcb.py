@@ -40,8 +40,12 @@ import generate_schematic as sch  # noqa: E402
 # ------------------------------------------------------------------ setup ----
 
 BOARD_W = 84.0
-BOARD_H = 84.0   # 74 -> 80 for the Rev B parts, 80 -> 84 to put the
-                 # sensor-5V block on the same side as what it feeds
+BOARD_H = 100.0  # 74 -> 80 for the Rev B parts, 80 -> 84 to put the
+                 # sensor-5V block on the same side as what it feeds,
+                 # 84 -> 100 for the power-fail ride-through: two 16 mm
+                 # electrolytic cans plus the detector and the sensor-rail
+                 # switch had no 11 x 11 mm of free board between them.
+                 # 100 mm is still inside JLC's cheap 100 x 100 tier.
 FILLET = 3.0
 OUT = os.path.join(PROJ, "esp32s3-can-sd-logger.kicad_pcb")
 PRO = os.path.join(PROJ, "esp32s3-can-sd-logger.kicad_pro")
@@ -138,12 +142,12 @@ FIXED = {
     "Hirose DM3D-SF":           (75.0, 41.0, 270),  # right edge, card out
     "value:Spare IO":           (10.0, 3.0, 90),    # top edge, clear of H1
     "value:SPI":                (27.5, 3.0, 90),    # top edge
-    "value:UART0":              (26.0, 81.5, 90),   # bottom edge
-    "value:I2C / Qwiic":        (41.0, 81.5, 90),
-    "value:Rail break-out":     (56.0, 81.5, 90),
+    "value:UART0":              (26.0, 97.5, 90),   # bottom edge
+    "value:I2C / Qwiic":        (41.0, 97.5, 90),
+    "value:Rail break-out":     (56.0, 97.5, 90),
     # 1.5 mm left of centre in its slot, so H4's keepout ring clears the
     # connector body by 0.65 mm.
-    "value:WS2812":             (69.0, 81.5, 90),   # shift-light strip
+    "value:WS2812":             (69.0, 97.5, 90),   # shift-light strip
     "value:RESET":              (78.0, 56.5, 0),    # right edge, case access
     "value:BOOT":               (78.0, 63.5, 0),
 }
@@ -177,6 +181,11 @@ BUCK_FIXED = [
     ("Power", "+5V",        {"+5V"},                     (33.8, 37.4, 0)),
 
     # ---- 3V3 island: same pattern, one pitch down
+    # This converter had no input capacitor of its own and reached
+    # across to the 5 V island's pair, 12.6 mm away. Same offsets
+    # from the IC as that island uses.
+    ("Power", "100nF 100V", {"+VBAT", "GND"},            (36.3, 58.0, 180)),
+    ("Power", "10uF 100V",  {"+VBAT", "GND"},            (36.2, 60.9, 180)),
     ("Power", "100k",       {"+VBAT", "EN_3V3"},         (38.3, 53.4, 0)),
     ("Power", "2.2nF 50V",  {"BST_3V3", "SW_3V3"},       (42.0, 53.4, 0)),
     ("Power", "95.3k",      {"SW_3V3", "RAMP_3V3"},      (45.7, 53.4, 0)),
@@ -195,6 +204,27 @@ BUCK_FIXED = [
     ("Power", "+3V3",       {"+3V3"},                    (33.5, 68.2, 0)),
 ]
 
+# Bypass capacitors that have to sit at the pin they bypass rather than
+# wherever the zone packer has room.  These share BUCK_FIXED's machinery --
+# same (sheet, value, net signature) key, same position table -- but they
+# are not part of a buck, so they are listed separately.
+#
+# gen/audit_pcb.py found both of these 8 mm from their supply pin, at the
+# far end of a zone.  A 100 nF that far away is not a bypass: the loop it
+# closes is longer than the one it is supposed to shorten, and for the CAN
+# transceiver that loop is the return path for a 1 Mbit/s driver.
+PIN_FIXED = [
+    # sheet, value,        nets,              x,    y,   rot     serves
+    ("MCU", "100nF 16V", {"+5V", "GND"}, (50.8, 84.5, 180)),  # U6 pin 5
+    ("CAN", "100nF 16V", {"+5V", "GND"}, ( 7.6, 37.4, 180)),  # U7 pin 3
+    # The ride-through bank.  Fixed rather than zone-packed because a part
+    # with a 20.8 mm courtyard steamrolls a shelf packer, and split one can
+    # per side because two of them do not fit abreast anywhere: the left one
+    # under the front end that feeds it, the right one under the buttons.
+    ("Power", "220uF 100V", {"+VBAT", "GND"}, (20.5, 83.5, 0)),
+    ("Power", "220uF 100V", {"+VBAT", "GND"}, (72.0, 77.0, 0)),
+]
+
 
 # Mounting holes: one per corner, 4 mm in from each, so the four of them
 # form a square.  They used to sit inboard and at three different insets --
@@ -202,7 +232,7 @@ BUCK_FIXED = [
 # bottom pair 6 mm out of line with the top -- which is neither symmetric
 # nor useful.  4 mm is set by H1: any further in and its keepout ring eats
 # into J7, and the top header row has no slack to give.
-HOLES = [(4.0, 4.0), (4.0, 80.0), (80.0, 4.0), (80.0, 80.0)]
+HOLES = [(4.0, 4.0), (4.0, 96.0), (80.0, 4.0), (80.0, 96.0)]
 
 # How much of a zone's spare height may go between its rows.  Silkscreen
 # reference text is 0.8 mm, so a millimetre on top of the 0.4 mm packing gap
@@ -218,19 +248,24 @@ ZONES = [
     ("ch2",       (18.0,  7.0,  8.0, 26.0), lambda p, n, s: n & {"AIN2_A", "AIN2_PU", "AIN2_R1", "AIN2_R2", "AIN2_IN", "AIN2"}),
     ("ch3",       (26.5,  7.0,  8.0, 26.0), lambda p, n, s: n & {"AIN3_A", "AIN3_PU", "AIN3_R1", "AIN3_R2", "AIN3_IN", "AIN3"}),
     ("ch4",       (34.6,  7.0,  7.6, 26.0), lambda p, n, s: n & {"AIN4_A", "AIN4_PU", "AIN4_R1", "AIN4_R2", "AIN4_IN", "AIN4"}),
-    ("ws2812",    (57.5, 69.8, 16.0,  9.6), lambda p, n, s: n & {"LED_DIN_MCU", "LED_DIN_A", "LED_DIN", "LED_5V"}),
+    ("ws2812",    (48.5, 85.8, 16.0,  9.6), lambda p, n, s: n & {"LED_DIN_MCU", "LED_DIN_A", "LED_DIN", "LED_5V"} or (s == "MCU" and n == {"+5V", "GND"})),
+    # Ride-through support: the power-fail detector and the sensor-rail
+    # switch, in the band the bottom-edge furniture vacated when the board
+    # grew.  Must be listed before `frontend` and `sens5v`, both of whose
+    # predicates would otherwise claim the divider and the switch.
+    ("ridethru",  (34.5, 69.0, 14.5, 11.0), lambda p, n, s: s == "Power" and bool(n & {"PFD_SENSE", "PWR_FAIL", "SENS_G", "SENS_EN_G"})),
     ("usb",       (62.0,  8.0, 13.0, 14.0), lambda p, n, s: n & {"USB_DP_CON", "USB_DM_CON", "USB_CC1", "USB_CC2", "VBUS_IN", "VBUS", "USB_DP", "USB_DM"}),
     ("sdpwr",     (59.0, 49.3, 11.0,  8.5), lambda p, n, s: n & {"SD_PG", "SD_EN_G", "SD_PWR_EN"}),
     ("sd",        (49.8, 21.4, 13.2, 15.0), lambda p, n, s: s == "SD Card"),
     ("can",       ( 9.5, 34.0, 21.0, 15.2), lambda p, n, s: s == "CAN"),
-    ("sens5v",    ( 9.5, 75.2, 24.0,  6.0), lambda p, n, s: n & {"VSENS_F", "+5VS"} and s == "Power"),
+    ("sens5v",    (34.5, 81.0, 13.5,  8.0), lambda p, n, s: n & {"VSENS_F", "VSENS_SW", "+5VS"} and s == "Power"),
     ("frontend",  ( 9.2, 49.7, 24.4, 25.0), lambda p, n, s: s == "Power" and n & {"VBAT_IN", "VBAT_F", "VBAT_FB", "GATE_RB", "VCAP", "VBAT_UVLO", "+VBAT"}),
     # IO3/IO45/IO46 run from the module's south pad row to J7 at the top
     # left. Pull-downs parked in the bottom band left R29 needing a run
     # the length of the board; put them on the path instead.
     ("strap",     (42.6, 20.8,  6.6,  7.6), lambda p, n, s: n & {"IO3", "IO45", "IO46"}),
     ("mcu_misc",  (63.0, 23.0, 19.0, 10.4), lambda p, n, s: s == "MCU"),
-    ("pwr_misc",  (34.0, 69.8, 15.5,  9.6), lambda p, n, s: True),
+    ("pwr_misc",  (47.5, 69.5, 13.0, 13.0), lambda p, n, s: True),
 ]
 
 
@@ -351,7 +386,7 @@ def main():
     buckets = {name: [] for name, _, _ in ZONES}
     fixed_parts, hole_parts = [], []
     buck_index = {}
-    for sheet_name, value, netset, pos in BUCK_FIXED:
+    for sheet_name, value, netset, pos in BUCK_FIXED + PIN_FIXED:
         key = (sheet_name, value,
                frozenset(netset) if netset is not None else None)
         buck_index.setdefault(key, []).append(pos)
