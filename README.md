@@ -300,6 +300,48 @@ Bus side, in order from the transceiver out:
 CAN_H/CAN_L run to `J1` pins 3 and 4, so one 4-pin JST-PH carries power and bus
 in a single harness.
 
+### OBD-II and "K-DCAN"
+
+A BMW/MINI K+DCAN cable carries **two unrelated buses**, and this board has
+hardware for exactly one of them.
+
+**D-CAN — yes, already.** Diagnostic CAN is ISO 15765-4: plain 500 kbit/s CAN
+on OBD-II pins 6 and 14, which is what `U7` and the TWAI controller do. `J1`
+maps onto an OBD-II plug with nothing in between — pin 16 to `J1.1`, pins 4/5
+to `J1.2`, pin 6 to `J1.3`, pin 14 to `J1.4` — so one cable both powers the
+board and connects it to the bus. What is left is software: ISO-TP
+(ISO 15765-2) segmentation and whichever of UDS or KWP2000 the target speaks.
+
+> **Cut `JP1` before plugging into a vehicle.** The board ships terminated
+> (§4), and a car's D-CAN is already terminated at both ends. A third 120 Ω
+> across the pair drops the bus to ~40 Ω and can stop it working entirely.
+> Termination is for a bench bus where this board is an end node. Note also
+> that `CAN_S` (GPIO21) lets firmware pick listen-only for sniffing, so the
+> board need never ACK a bus it is only observing.
+
+**K-line — no, and it cannot be bodged.** ISO 9141-2 / KWP2000 is a single
+bidirectional wire on OBD-II pin 7 idling at battery voltage and pulled to
+ground by an open-collector driver. That needs a transceiver — an L9637D or
+equivalent — and there is none on this board. Feeding it into an analog input
+does not work either: on the 0–16 V setting the anti-alias filter rolls off at
+891 Hz (§10), which destroys even 9600 baud, and it gives no way to transmit.
+Routing it to `J7` is worse, since those are strapping pins and a K-line
+idling high at boot would hold `IO46` in the wrong boot mode.
+
+This matters for the **MINI R53** specifically: its instrument CAN carries
+`0x316` at 500 kbit/s, which this board already reads and logs — but its
+*diagnostics and flashing* are K-line at 9600 8E1, negotiating to 62500 baud
+for flash reads. The shift light and telemetry work on this hardware. A
+tuning or flashing tool does not.
+
+Adding it needs an external L9637D module on the `J5` SPI header — the S3's
+UARTs matrix onto any GPIO, so two of `GPIO40`–`42`/`47` become K-line TX/RX,
+and `J5` supplies +3V3 and ground. The one wire `J5` cannot supply is the
+transceiver's battery feed: `J8` breaks out +5 V, +3V3 and ground only, so
+12 V has to come from `TP3` or upstream of `J1`. **For a rev C, an on-board
+L9637D is the highest-value addition** — SO-8, about a dollar, two GPIOs and a
+`+VBAT` tap — and it would make one board cover both halves of a K+DCAN cable.
+
 ---
 
 ## 5. microSD
@@ -958,8 +1000,12 @@ copper, not parts — nothing to fit.
 ### After the boards arrive
 
 Before connecting anything to a car: put a bench supply on `J1` at **12 V with
-the current limit set to 100 mA**, and check `TP1` (+VBAT), `TP2` (+5 V),
-`TP3` (+3V3) and `TP4` (+5VS) with a meter. If a rail is wrong or the supply
+the current limit set to 100 mA**, and check `TP3` (+VBAT), `TP4` (+5 V),
+`TP5` (+3V3) and `TP6` (+5VS) with a meter, against ground on `TP7`.
+(`TP1` and `TP2` are the converters' power-good outputs, not rails — both
+should read high once the rails are up. The full map is `TP1` PG_5V, `TP2`
+PG_3V3, `TP3` +VBAT, `TP4` +5V, `TP5` +3V3, `TP6` +5VS, `TP7` GND, `TP8`
+SD_CLK, `TP9` SD_CMD, `TP10` CAN_H, `TP11` CAN_L.) If a rail is wrong or the supply
 hits its limit, nothing is damaged. Then set the jumpers for your sensors
 per the table in §3 — they ship open, which is the 0–3.3 V range with the
 10 kΩ in circuit.

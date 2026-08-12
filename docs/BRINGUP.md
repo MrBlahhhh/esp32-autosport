@@ -56,8 +56,8 @@ there — later stages assume the earlier ones.
       **SD_CLK / SD_CMD test points** by the socket — CMD0 out and a
       response back tells you card vs. bus in one look.
 - [ ] CAN: with a second node and 120 Ω at the far end, send a frame.
-      TP8/TP9 (CAN_H/CAN_L on the CAN sheet's test points) show ~2.5 V
-      recessive, splitting to ~3.5/1.5 V dominant.
+      TP10/TP11 (CAN_H/CAN_L) show ~2.5 V recessive, splitting to
+      ~3.5/1.5 V dominant. (TP8/TP9 are SD_CLK/SD_CMD, not the bus.)
 - [ ] Power-cut drill: with a file open and logging, kill J1. The file
       must be intact on the card. `PWR_FAIL` on J7.4 shows the warning
       edge on a scope; the bank buys ~100 ms (study 4).
