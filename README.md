@@ -968,10 +968,11 @@ the dash enclosure around.
 ### Ordering note: BOM part-number coverage
 
 `fab/bom.csv` is in JLCPCB's format (`Comment,Designator,Footprint,JLCPCB
-Part #`), and BOM/CPL designators are machine-verified to agree. 30 lines
-carry part numbers **checked against the live catalogue**; the other 40 are
-plain 0805/1206 R/C that JLC's order flow auto-matches from value + package.
-**Nothing is left to pick by hand.** The nine lines that used to be blank were
+Part #`), and BOM/CPL designators are machine-verified to agree. All 70
+lines carry a part number — the 30 specific ones checked against the live
+catalogue, and the 40 generic R/C filled in from what JLC's own matcher chose
+on a real order run. **Nothing is left to pick by hand, and nothing is left to
+fuzzy-matching.** The nine lines that used to be blank were
 filled in on 2026-08-13, after a real order run showed what the fuzzy matcher
 does when the field is empty. Never guess a C-number into the file -- a wrong
 part number assembles the wrong part, and two of the ones already in here
@@ -1052,9 +1053,8 @@ line falls through to the fuzzy text matcher, and you get offered a mechanical
 limit switch for a Schottky diode named "40V 1A" and a real WS2812 LED for a
 header named WS2812. Both happened.
 
-**5 — Match the parts.** **30** lines arrive with a part number and match
-themselves; the other **40** are generic 0805/1206 R/C that JLC auto-matches
-from value + package. **There is nothing left to pick by hand.** Most carry a specific
+**5 — Match the parts.** All **70** lines arrive with a part number and match
+themselves. **There is nothing to pick.** Most carry a specific
 manufacturer part number and should match on it — the rest are generic
 passives where any equivalent will do.
 Take *Basic* parts over *Extended* where the value and package match; Extended
