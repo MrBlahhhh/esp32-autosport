@@ -447,6 +447,63 @@ def split_value(value):
     return value.strip(), volt, tol
 
 
+# Part numbers for the generic passives and the two ferrites.
+#
+# These used to be left blank on the theory that JLC's order flow auto-matches
+# an 0805 resistor from value + package, which it does. That stopped being good
+# enough the moment the boards were going to be hand-assembled: buying the
+# parts loose needs a real number for every line, not just the interesting
+# ones. Every entry below is the part JLCPCB's own matcher chose on a live
+# order run (2026-08-13), so ordering from LCSC gets the same component the
+# assembly house would have fitted.
+#
+# Keyed on the Comment string export_fab.py writes, which is value + voltage +
+# tolerance -- so 100nF100V and 100nF16V stay distinct. That distinction is
+# load-bearing: C2/C5/C16 sit on +VBAT and must be the 100 V part.
+GENERIC_LCSC = {
+    "0466002.NR": "C187595",
+    "100": "C17408",
+    "100k": "C149504",
+    "100k1%": "C5713386",
+    "100nF100V": "C28233",
+    "100nF16V": "C49678",
+    "10k": "C17414",
+    "10k0.1%": "C856630",
+    "10nF100V": "C128805",
+    "10uF100V": "C6872041",
+    "10uF16V": "C13585",
+    "12.7k1%": "C2933300",
+    "121k": "C17438",
+    "15k0.1%": "C728642",
+    "1M": "C17514",
+    "1k": "C17513",
+    "1k0.1%": "C864177",
+    "1nF50V": "C46653",
+    "1uF16V": "C28323",
+    "1uF50V": "C28323",
+    "2.21k0.1%": "C865368",
+    "2.2nF50V": "C28260",
+    "2.49k": "C2930178",
+    "20.5k": "C2933365",
+    "22uF16V": "C12891",
+    "27.4k1%": "C2930188",
+    "270pF50V": "C1732",
+    "31.6k": "C49254250",
+    "33": "C17634",
+    "4.7k": "C17673",
+    "4.7nF50V": "C1744",
+    "44.2k": "C2960780",
+    "47k": "C17713",
+    "5.1k": "C27834",
+    "57.6k": "C163405",
+    "60.4": "C72998",
+    "742792022": "C2661452",
+    "742792625": "C1533835",
+    "8.2k": "C17828",
+    "95.3k": "C2930435",
+}
+
+
 def part(sh, prefix, lib_id, value, footprint, pins, mpn="", note="", nc=(),
          lcsc=""):
     base, volt, tol = split_value(value)
@@ -462,7 +519,14 @@ def part(sh, prefix, lib_id, value, footprint, pins, mpn="", note="", nc=(),
             "mpn": mpn,
             "note": note,
             "nc": set(nc),
-            "lcsc": lcsc,
+            # Fall back to the generic table, keyed the same way export_fab.py
+            # builds its Comment column (value + voltage + tolerance).
+            # ...or by bare MPN. export_fab.py drops the manufacturer from
+            # the Comment ("Wurth 742792022" -> "742792022"), so match the
+            # last token too.
+            "lcsc": lcsc or GENERIC_LCSC.get(base + volt + tol)
+                    or GENERIC_LCSC.get(mpn)
+                    or GENERIC_LCSC.get(mpn.split()[-1] if mpn else "", ""),
         }
     )
 

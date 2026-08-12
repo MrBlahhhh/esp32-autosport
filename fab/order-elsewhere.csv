@@ -1,0 +1,9 @@
+Designators,Qty per board,Order Qty,What,Note
+C3,1,5,"100uF 100V SMD electrolytic, 10 mm can",Nichicon UCD2A101MNL1GS or equivalent. Land is CP_Elec_10x10.5
+"C6, C7",2,10,"330uF 100V SMD electrolytic, 16 mm can","Land is CP_Elec_16x22 (same pads as 16x17.5). If 330 uF only exists at 18 mm, fit 220 uF at 16 mm instead -- the bank drops to 540 uF and the ride-through to ~108 ms, which is what the board was simulated at originally"
+J1,1,5,"JST PH 4-pin vertical header, 2.00 mm",B4B-PH-K-S
+J10,1,5,"JST PH 8-pin vertical header, 2.00 mm",B8B-PH-K-S
+"J3, J4, J8",3,15,"0.1"" pin header, 1x04 vertical",any
+"J5, J7",2,10,"0.1"" pin header, 1x06 vertical",any
+J6,1,5,"0.1"" pin header, 1x03 vertical",any
+harness,1,5,JST PH crimp housings + crimps for J1 (4) and J10 (8),buy with the headers or the harness cannot be made up
